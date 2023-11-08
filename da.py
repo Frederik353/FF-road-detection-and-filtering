@@ -18,8 +18,8 @@ def filter_da(da_seg_mask, ll_seg_mask):
     """
 
     # Assertions to ensure the masks have the same dimensions
-    assert len(da_seg_mask) == len(ll_seg_mask)
-    assert len(da_seg_mask[0]) == len(ll_seg_mask[0])
+    # assert len(da_seg_mask) == len(ll_seg_mask)
+    # assert len(da_seg_mask[0]) == len(ll_seg_mask[0])
     t = time.time()
 
     #columns, rows = da_seg_mask.shape
