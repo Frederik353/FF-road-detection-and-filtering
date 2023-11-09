@@ -287,7 +287,7 @@ def plot(da_seg_mask, ll_seg_mask, filtered_da):
 
 list_of_images = []
 # max 150
-for i in range(1, 20):
+for i in range(1, 2):
     print(i, "-----------------------------------------")
     try:
         file_path = f"iteration/{i}.npz"
