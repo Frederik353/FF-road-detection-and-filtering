@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 import cv2
-
+import os
 
 # convert into grey scale image
 def grey(image):
@@ -164,12 +164,6 @@ def skeletonize(img):
     return skel
 
 
-def dbug_image(image):
-    np_image = image.astype(np.uint8)
-    cv2.imshow("debug image", np_image)
-    cv2.waitKey(5000)
-    cv2.destroyAllWindows()
-
 
 def connect_components_directionally(img, frame, max_distance=10, desired_angle=0, angle_tolerance=10):
     # Find the connected components
@@ -181,6 +175,8 @@ def connect_components_directionally(img, frame, max_distance=10, desired_angle=
 
     # Create an image to draw the connections
     connected_img = np.copy(img)
+
+    print("num_labels: ", num_labels)
 
     # Consider every pair of components
     for i in range(1, num_labels):
@@ -198,7 +194,7 @@ def connect_components_directionally(img, frame, max_distance=10, desired_angle=
             # If the closest points are within the maximum distance, connect them
             if pt1 is not None and distance <= max_distance:
                 # print("found connection, d: ", distance)
-                cv2.line(connected_img, tuple(pt1[::-1]), tuple(pt2[::-1]), 1, 1)
+                cv2.line(connected_img, tuple(pt1[::-1]), tuple(pt2[::-1]), 1, 3)
 
     return connected_img
 
@@ -236,7 +232,8 @@ def find_closest_edge_points(component1, component2, labels, desired_angle_rad, 
 
     return closest_point1, closest_point2, min_distance
 
-def mark_first_white_pixels(img):
+def mark_first_white_pixels(img, connectivity_threshold=3):
+    
     # Create an output image filled with zeros
     marked_img = np.zeros_like(img)
 
@@ -248,15 +245,61 @@ def mark_first_white_pixels(img):
         # For the left side, start from the middle and go left
         left_index = np.argmax(img[row, :middle][::-1] == 1)
         if left_index > 0:  # If a white pixel is found
-            marked_img[row, middle - left_index] = 1
-        
+            # marked_img[row, middle - left_index] = 1
+
+            start_index = middle - left_index
+            marked_img[row, start_index - connectivity_threshold :start_index] = 1
+
+
         # For the right side, start from the middle and go right
         right_index = np.argmax(img[row, middle:] == 1)
         if right_index > 0:  # If a white pixel is found
-            marked_img[row, middle + right_index] = 1
+            start_index = middle + right_index
+            marked_img[row, start_index:start_index + connectivity_threshold ] = 1
 
     return marked_img
 
+def remove_small_components(image ,min_size_threshold):
+    # Find connected components
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(image, connectivity=8)
+
+    # Create an output image that will hold the cleaned skeleton
+    clean = np.zeros_like(image)
+
+    # Go through all found components
+    for i in range(1, num_labels):  # starting from 1 to ignore the background
+        if stats[i, cv2.CC_STAT_AREA] >= min_size_threshold:
+            # If the component is larger than the threshold, add it to the output image
+            clean[labels == i] = 1
+
+    return clean
+
+
+def dbug_image(image):
+    # If image is boolean, we need to convert to 0s and 255s
+    if np.max(image) == 1:
+        np_image = image.astype(np.uint8) * 255
+    else:
+        np_image = image.astype(np.uint8)
+
+    print("showing debug image")
+    cv2.imshow("debug image", np_image)
+    cv2.waitKey(10_000)  # Display the image for 10 seconds
+    cv2.destroyAllWindows()
+
+
+def shift_outwards_and_fill(image, block_size, shift_amount):
+    rows, cols = image.shape
+    output_image = np.copy(image)
+
+    for block_start in range(0, rows, block_size * 2):
+        for i in range(block_start, min(block_start + block_size, rows)):
+            # if (i - block_start) % 2 == 0:  # Check if the row is to be shifted
+            # Shift the row by the shift_amount
+            output_image[i, shift_amount:] = output_image[i, :-shift_amount]
+            # Fill the start of the row with zeros
+            output_image[i, cols - shift_amount :] = 0
+    return output_image
 
 
 def filter_da(da_seg_mask, ll_seg_mask):
@@ -265,52 +308,46 @@ def filter_da(da_seg_mask, ll_seg_mask):
     nx = len(da_seg_mask[0])
     # Frame boundaries (xmin, ymin, xmax, ymax)
     frame = (0, 0, nx, ny)
-    copy = np.copy(ll_seg_mask)
     te = time.time()
 
-    # Assuming ll_seg_mask is your binary image, convert it to a numpy array
     np_image = np.array(ll_seg_mask, dtype=np.uint8)
+    copy = np.copy(np_image)
+
+    # tamper
+    copy = shift_outwards_and_fill(np_image, 50, 50)
+    mid_col = frame[2] // 2
+    copy[:, :mid_col] = np.fliplr(copy[:, mid_col:])
+
+    dbug_image(copy)
+
+
 
     # Skeletonize the image
-    skeleton = skeletonize(np_image)
-
-    # Find connected components
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(skeleton, connectivity=8)
-
-    # Set a minimum size threshold for components to keep
-    min_size_threshold = 10  # this is an example value; adjust it according to your needs
-
-    # Create an output image that will hold the cleaned skeleton
-    cleaned_skeleton = np.zeros_like(skeleton)
-
-    # Go through all found components
-    for i in range(1, num_labels):  # starting from 1 to ignore the background
-        if stats[i, cv2.CC_STAT_AREA] >= min_size_threshold:
-            # If the component is larger than the threshold, add it to the output image
-            cleaned_skeleton[labels == i] = 1
+    # skeleton = skeletonize(np_image)
+    # cleaned_skeleton = remove_small_components(skeleton, 10)
 
 
-    connected = connect_components_directionally(cleaned_skeleton, frame, 100, 45, 15)
+    removed_outer =  mark_first_white_pixels(copy)
+    # dbug_image(removed_outer)
 
-    removed_outer =  mark_first_white_pixels(connected)
+    connected = connect_components_directionally(removed_outer, frame, 100, 45, 10)
 
     # lines = gauss(removed_outer)
     # lines = canny(lines, nx, ny)
-    lines = cv2.HoughLinesP(removed_outer, 2, np.pi/180, 100, minLineLength=20, maxLineGap=50)
+    lines = cv2.HoughLinesP(connected, 2, np.pi/180, 100, minLineLength=20, maxLineGap=50)
 
     averaged_lines = average(copy, lines)
     lines_to_intersection = line_intersection(averaged_lines, frame)
 
     # black_lines = display_lines(copy, averaged_lines)
     black_lines = display_lines(copy, lines_to_intersection)
-    # black_lines = display_lines(copy, lines)
     # taking wighted sum of original image and lane lines image
     lanes = cv2.addWeighted(copy, 0.8, black_lines, 1, 1)
 
     te = time.time()
     print(f"time {te - t}")
 
-    return lanes ,copy 
+    return  connected, copy
 
 
 def plot(da_seg_mask, ll_seg_mask, filtered_da):
@@ -327,9 +364,46 @@ def plot(da_seg_mask, ll_seg_mask, filtered_da):
     plt.show()
 
 
+
+
+def save_image(image_data, filename, folder_name='saved_images'):
+    """
+    Save an image to a specified folder with a given filename.
+    
+    :param image_data: numpy array containing image data to save
+    :param filename: string, desired name of the file
+    :param folder_name: string, name of the folder where the image will be saved
+    :return: None
+    """
+    # can use int
+    filename = f"{filename}.png"
+    folder_name = str(folder_name)
+
+    # Use os.path.join to make the code platform-independent
+    folder_path = os.path.join(os.getcwd(), folder_name)
+
+    # Check if the directory exists
+    if not os.path.exists(folder_path):
+        # If the directory does not exist, create it
+        os.makedirs(folder_path)
+
+    # Full path where you want to save the image
+    save_path = os.path.join(folder_path, filename)
+
+    # Save the image
+    success = cv2.imwrite(save_path, image_data)
+    
+    # Check if the image was saved successfully
+    if success:
+        print(f'Image saved successfully at: {save_path}')
+    else:
+        print(f'Failed to save image at: {save_path}')
+
+
+
 list_of_images = []
 # max 150
-for i in range(3,4):
+for i in range(1, 2):
     print(i, "-----------------------------------------")
     try:
         file_path = f"iteration/{i}.npz"
@@ -349,11 +423,10 @@ for i in range(3,4):
 cv2.namedWindow("Image Window", cv2.WINDOW_NORMAL)
 for i, image in enumerate(list_of_images):
     # BGR colors for each mask
-    colors = [(255, 0, 0), (255, 255, 255), (0, 0, 255)]
+    colors = [(102, 62, 43 ), (237, 193, 105), (255, 255, 255) ] # BGR format !!!not RGB!!!
 
-    # # Create an empty canvas with 3 channels (for BGR)
-    # height, width = image[0].shape
-    # overlay = np.zeros((height, width, 3), dtype=np.uint8)
+    save_folder = 'tampered_images'
+    save_result = True
 
     # # Create an empty canvas with 3 channels (for BGR)
     height, width = image[0].shape
@@ -364,12 +437,12 @@ for i, image in enumerate(list_of_images):
         overlay[mask == 1] = color
 
     # Display the result
-    # cv2.imshow(f'imag', overlay)
+    cv2.imshow("Image", overlay)
+    if save_result:
+        save_image(overlay, i, save_folder )
 
-    cv2.imshow("Image Window", overlay)
-    # cv2.imshow('Image Window', mask[0])
 
-    cv2.waitKey(5000)
+    cv2.waitKey(10000)
 
 cv2.destroyAllWindows()
 
