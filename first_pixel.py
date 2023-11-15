@@ -130,9 +130,8 @@ def display_lines(image, lines):
     lines_image = np.zeros_like(image)
     if lines is not None:
         for line in lines:
-            # x1, y1, x2, y2 = line[0] # hvis input lines
             x1, y1, x2, y2 = line  # hvis input averaged lines
-            cv2.line(lines_image, (x1, y1), (x2, y2), (1, 0, 0), 10)
+            cv2.line(lines_image, (x1, y1), (x2, y2), (1, 0, 0), 2)
     return lines_image
 
 
@@ -318,9 +317,6 @@ def filter_da(da_seg_mask, ll_seg_mask):
     mid_col = frame[2] // 2
     copy[:, :mid_col] = np.fliplr(copy[:, mid_col:])
 
-    dbug_image(copy)
-
-
 
     # Skeletonize the image
     # skeleton = skeletonize(np_image)
@@ -334,7 +330,11 @@ def filter_da(da_seg_mask, ll_seg_mask):
 
     # lines = gauss(removed_outer)
     # lines = canny(lines, nx, ny)
-    lines = cv2.HoughLinesP(connected, 2, np.pi/180, 100, minLineLength=20, maxLineGap=50)
+
+    removed_outer =  mark_first_white_pixels(connected)
+
+    lines = cv2.HoughLinesP(removed_outer, 2, np.pi/180, 100, minLineLength=20, maxLineGap=50)
+    hough_lines = display_lines(copy, lines.reshape(-1, 4))
 
     averaged_lines = average(copy, lines)
     lines_to_intersection = line_intersection(averaged_lines, frame)
@@ -342,12 +342,13 @@ def filter_da(da_seg_mask, ll_seg_mask):
     # black_lines = display_lines(copy, averaged_lines)
     black_lines = display_lines(copy, lines_to_intersection)
     # taking wighted sum of original image and lane lines image
-    lanes = cv2.addWeighted(copy, 0.8, black_lines, 1, 1)
+    lanes = black_lines
+    # lanes = cv2.addWeighted(copy, 0.8, black_lines, 1, 1)
 
     te = time.time()
     print(f"time {te - t}")
 
-    return  connected, copy
+    return  hough_lines, hough_lines 
 
 
 def plot(da_seg_mask, ll_seg_mask, filtered_da):
@@ -423,16 +424,20 @@ for i in range(1, 2):
 cv2.namedWindow("Image Window", cv2.WINDOW_NORMAL)
 for i, image in enumerate(list_of_images):
     # BGR colors for each mask
-    colors = [(102, 62, 43 ), (237, 193, 105), (255, 255, 255) ] # BGR format !!!not RGB!!!
+    colors = [(237, 193, 105, 255), (255, 255, 255, 255), (157, 251, 177, 255), (155, 155, 155 , 255)] # BGR format !!!not RGB!!!
 
-    save_folder = 'tampered_images'
+    # save_folder = 'tampered_images'
+    save_folder = 'final_images'
     save_result = True
 
     # # Create an empty canvas with 3 channels (for BGR)
-    height, width = image[0].shape
-    overlay = np.zeros((height, width, 3), dtype=np.uint8)
+    img_height, img_width = image[0].shape
+    n_channels = 4
+    overlay = np.zeros((img_height, img_width, n_channels), dtype=np.uint8)
+    # overlay = np.zeros((height, width, 3), dtype=np.uint8)
+    # Overlay each mask with a different color
 
-    # # Overlay each mask with a different color
+    overlay[image[0] == 0] = (0, 0, 0, 0)
     for mask, color in zip(image, colors):
         overlay[mask == 1] = color
 
