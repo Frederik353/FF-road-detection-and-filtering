@@ -1,47 +1,76 @@
+
 def connect_components_directionally(img, frame, max_distance=10, desired_angle=0, angle_tolerance=10):
-    """tries to connect components in a binary image in a given direction with a given tolerance and max distance
+    """
+    This function tries to connect components in a binary image in a given direction with a specified tolerance and maximum distance. 
+    It finds the closest edge points between components that are within the given angle tolerance and distance, and draws a line to connect them.
 
     Args:
-        img (np.ndarray dtype uin8): binary image to connect components in
-        frame (tuple(int,int)): size of image
-        max_distance (int, optional): _description_. Defaults to 10.
-        desired_angle (int, optional): _description_. Defaults to 0.
-        angle_tolerance (int, optional): _description_. Defaults to 10.
+        img (np.ndarray, dtype uint8): A binary image in which components are to be connected.
+        frame (tuple(int, int)): The size (width, height) of the image.
+        max_distance (int, optional): The maximum distance between components for a connection to be considered. Defaults to 10.
+        desired_angle (int, optional): The angle (in degrees) in which the connection is desired. Defaults to 0 (horizontal).
+        angle_tolerance (int, optional): The tolerance (in degrees) for the angle difference between the actual connection and the desired angle. Defaults to 10.
 
     Returns:
-        _type_: _description_
+        np.ndarray: An image with the same dimensions as the input, showing the original components and the connections between them.
     """
-    # Find the connected components
+    # Find the connected components in the image
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(img, connectivity=8)
 
-    # Convert the desired angle and tolerance to radians
+    # Convert the desired angle and angle tolerance from degrees to radians
     desired_angle_rad = np.deg2rad(desired_angle)
     angle_tolerance_rad = np.deg2rad(angle_tolerance)
 
-    # Create an image to draw the connections
+    # Create a new image for drawing the connections
     connected_img = np.copy(img)
 
-    print("number of lines detected: ", num_labels - 1) # -1 for background
+    print("number of lines detected: ", num_labels - 1) # -1 as the first label is the background
 
-    # Consider every pair of components
+    # Iterate over every pair of components to consider potential connections
     for i in range(1, num_labels):
         for j in range(i + 1, num_labels):
-            # Find the closest edge points in the desired direction
+            # Find the closest edge points between components that match the specified direction and angle tolerance
             pt1, pt2, distance = find_closest_edge_points(i, j, labels, desired_angle_rad, angle_tolerance_rad, frame)
-            # Calculate the vector between centroids
-            # vector = centroids[j] - centroids[i]
-            # Calculate the distance between centroids
-            # distance = np.linalg.norm(vector)
 
-            # Calculate the angle of the vector w.r.t horizontal axis
-            # angle = np.arctan2(vector[1], vector[0])  # Angle in radians
-
-            # If the closest points are within the maximum distance, connect them
+            # Connect the components if the closest points are within the specified maximum distance
             if pt1 is not None and distance <= max_distance:
-                # print("found connection, d: ", distance)
-                cv2.line(connected_img, tuple(pt1[::-1]), tuple(pt2[::-1]), 1, 3)
+                cv2.line(connected_img, tuple(pt1[::-1]), tuple(pt2[::-1]), 1, 3)  # Draw a line to connect the components
 
     return connected_img
+
+def find_closest_edge_points(component1, component2, labels, desired_angle_rad, angle_tolerance_rad, frame):
+    # Extract the edge points for each component
+    edge_points1 = np.argwhere(labels == component1)
+    edge_points2 = np.argwhere(labels == component2)
+
+    # Initialize variables to store the closest points and minimum distance
+    min_distance = np.inf
+    closest_point1 = None
+    closest_point2 = None
+
+    # Iterate through all pairs of edge points to find the closest ones
+    for pt1 in edge_points1:
+        if pt1[1] > (frame[0] / 2):
+            center = 1
+        else: center = -1
+
+        for pt2 in edge_points2:
+            # Calculate the vector from pt1 to pt2
+            vector = pt2 - pt1
+            distance = np.linalg.norm(vector)
+            angle = np.arctan2(vector[1], vector[0])
+
+            # Check if the angle is within the tolerance
+            if desired_angle_rad * center - angle_tolerance_rad <= angle <= desired_angle_rad * center + angle_tolerance_rad:
+                # Update the closest points if the distance is less than the minimum found so far
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_point1 = pt1
+                    closest_point2 = pt2
+
+    return closest_point1, closest_point2, min_distance
+
+
 
 
 # convert into grey scale image

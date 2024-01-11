@@ -10,14 +10,14 @@ from filter_da import filter_da
 # print(f"time {te - t}")
 
 class debug_filter_da:
-    image_range=(1,2)
+    image_range = (0,10)
 
     save_result = False
     save_folder = "final_images"
     # BGR colors for each mask
     colors = [(237, 193, 105, 255), (255, 255, 255, 255), (157, 251, 177, 255), (155, 155, 155 , 255)] # BGR format !!!not RGB!!!
 
-    wait_time = 10_000 # ms between showing images
+    wait_time = 1000 # ms between showing images
 
     processed_masks = []
 
@@ -33,7 +33,10 @@ class debug_filter_da:
                 da_seg_mask = npzfile["da_seg_mask"]
 
                 # run filter on mask
+                start_time = time.time()
                 masks = filter_da(da_seg_mask, ll_seg_mask)
+                end_time = time.time()
+                print(f"Elapsed time: {start_time - end_time} seconds")
 
                 image = self.combine_masks(masks)
                 self.display_image(image)
@@ -49,6 +52,8 @@ class debug_filter_da:
         cv2.destroyAllWindows()
 
     def combine_masks(self, masks):
+        if len(masks) == 1:
+            return masks
 
         img_height, img_width = masks[0].shape
         # Create an empty canvas with 4 channels (for BGR alpha) alpha channel is for transparency
@@ -121,8 +126,6 @@ def debug_image(image, t=10_000):
     cv2.waitKey(t)  # Display the image for 10 seconds
     cv2.destroyAllWindows()
 
-
-
 # for making discontinous lines if you dont have good examples to test on
 def tamper(image, block_size, shift_amount):
     """ create a tampered image by shifting blocks of rows in the image
@@ -153,6 +156,7 @@ def tamper(image, block_size, shift_amount):
     output_image[:, :mid_col] = np.fliplr(output_image[:, mid_col:])
 
     return output_image
+
 
 
 if __name__ == "__main__":
