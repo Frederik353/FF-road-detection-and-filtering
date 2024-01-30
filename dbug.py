@@ -9,25 +9,31 @@ from filter_da import filter_da
 # te = time.time()
 # print(f"time {te - t}")
 
+
 class debug_filter_da:
-    image_range = (0,10)
+    image_range = (1, 2)
 
     save_result = False
     save_folder = "final_images"
     # BGR colors for each mask
-    colors = [(237, 193, 105, 255), (255, 255, 255, 255), (157, 251, 177, 255), (155, 155, 155 , 255)] # BGR format !!!not RGB!!!
+    colors = [
+        (237, 193, 105, 255),
+        (255, 255, 255, 255),
+        (157, 251, 177, 255),
+        (155, 155, 155, 255),
+    ]  # BGR format !!!not RGB!!!
 
-    wait_time = 1000 # ms between showing images
+    wait_time = 1000  # ms between showing images
 
     processed_masks = []
 
     def __init__(self):
-
+        time_arr = []
         for i in range(self.image_range[0], self.image_range[1]):
             print(i, "-----------------------------------------")
             try:
                 # read mask from npz file
-                file_path = f"iteration/{i}.npz"
+                file_path = f"./iteration/ ({i}).npz"
                 npzfile = np.load(file_path)
                 ll_seg_mask = npzfile["ll_seg_mask"]
                 da_seg_mask = npzfile["da_seg_mask"]
@@ -36,20 +42,24 @@ class debug_filter_da:
                 start_time = time.time()
                 masks = filter_da(da_seg_mask, ll_seg_mask)
                 end_time = time.time()
+                time_arr.append(start_time - end_time)
                 print(f"Elapsed time: {start_time - end_time} seconds")
 
                 image = self.combine_masks(masks)
                 self.display_image(image)
+                print("image", image.dtype, image.shape)
 
                 if self.save_result:
-
                     self.save_image(image, i)
-
 
             except FileNotFoundError:
                 print("file not found ", i)
-
         cv2.destroyAllWindows()
+
+        print("----------------------------------------")
+        print(f"average time: {np.average(time_arr)}")
+        print(f"median time: {np.median(time_arr)}")
+        print(time_arr)
 
     def combine_masks(self, masks):
         if len(masks) == 1:
@@ -68,7 +78,7 @@ class debug_filter_da:
         return overlay
 
     def display_image(self, image, window_name="Images"):
-        """ show an image
+        """show an image
 
         Args:
             image (np.array): image to show
@@ -104,13 +114,13 @@ class debug_filter_da:
 
         # Check if the image was saved successfully
         if success:
-            print(f'Image saved successfully at: {save_path}')
+            print(f"Image saved successfully at: {save_path}")
         else:
-            print(f'Failed to save image at: {save_path}')
+            print(f"Failed to save image at: {save_path}")
 
 
 def debug_image(image, t=10_000):
-    """ show an image
+    """show an image
     Args:
         image (_type_): image to show
         t (int): time to show image in ms
@@ -126,18 +136,19 @@ def debug_image(image, t=10_000):
     cv2.waitKey(t)  # Display the image for 10 seconds
     cv2.destroyAllWindows()
 
+
 # for making discontinous lines if you dont have good examples to test on
 def tamper(image, block_size, shift_amount):
-    """ create a tampered image by shifting blocks of rows in the image
+    """create a tampered image by shifting blocks of rows in the image
 
     Args:
-        image (_type_): 
+        image (_type_):
         block_size (_type_): size of blocks being shifted
-        shift_amount (_type_): amount of pixels to shift left and right 
+        shift_amount (_type_): amount of pixels to shift left and right
 
     Returns:
         _type_: tampered image with discontinous lines
-    
+
     example: use
         # copy = shift_outwards_and_fill(np_image, 50, 50)
     """
@@ -158,6 +169,13 @@ def tamper(image, block_size, shift_amount):
     return output_image
 
 
-
 if __name__ == "__main__":
     foo = debug_filter_da()
+
+# old
+# average time: -0.02864196565416124
+# median time: -0.021003007888793945
+
+# new
+# average time: -0.024868737326727973
+# median time: -0.022040367126464844
