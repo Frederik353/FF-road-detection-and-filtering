@@ -204,6 +204,8 @@ def connect_components(img, max_distance=10):
     # Create a new image for drawing the connections
     connected_img = np.copy(img)
 
+    # todo look into a way to not compare all centroids and discard already connected centroids
+
     # Iterate over every pair of components to consider potential connections
     for i in range(1, num_labels):
         for j in range(i + 1, num_labels):
@@ -211,13 +213,14 @@ def connect_components(img, max_distance=10):
             point2 = (int(centroids[j][0]), int(centroids[j][0]))
             distance = np.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
 
+
             # Connect the components if the closest points are within the specified maximum distance
             if distance <= max_distance:
-                cv2.line(connected_img, point1, point2, 1, 3)  # Draw a line to connect the components
-                print("---------------------")
+                # Draw a line on 'connected_img' from 'point1' to 'point2' with a color value of 1 and a thickness of 3 pixels.
+                cv2.line(connected_img, point1, point2, 1, thickness=1)  # Draw a line to connect the components
                 print("dist", distance)
                 print("p1: ", point2, "p2: ", point2)
-                debug_image([img, connected_img], t=1_000)
+                debug_image([img, connected_img], t=10)
 
     return connected_img
 
@@ -380,7 +383,7 @@ def filter_da(da_seg_mask, ll_seg_mask):
 
 
 
-def debug_image(masks, palette=None, is_demo=False, t=10_000):
+def debug_image(masks, palette=None, is_demo=False, t=10_000, window="debug"):
     """show an image
     Args:
         image (_type_): image to show
@@ -412,9 +415,9 @@ def debug_image(masks, palette=None, is_demo=False, t=10_000):
 
 
     print("showing debug image")
-    cv2.imshow("debug image", np_image)
+    cv2.imshow(window, np_image)
     cv2.waitKey(t)  # Display the image for 10 seconds
-    cv2.destroyAllWindows()
+    # cv2.destroyAllWindows()
 
 
 def show_seg_result(img, masks, palette=None, is_demo=False):

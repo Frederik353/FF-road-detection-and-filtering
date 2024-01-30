@@ -11,7 +11,7 @@ from filter_da import filter_da
 
 
 class debug_filter_da:
-    image_range = (1, 2)
+    image_range = (1, 20)
 
     save_result = False
     save_folder = "final_images"
