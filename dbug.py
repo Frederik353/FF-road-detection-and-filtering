@@ -11,7 +11,7 @@ from filter_da import filter_da
 
 
 class debug_filter_da:
-    image_range = (1, 20)
+    image_range = (2, 3)
 
     save_result = False
     save_folder = "final_images"
@@ -119,22 +119,63 @@ class debug_filter_da:
             print(f"Failed to save image at: {save_path}")
 
 
-def debug_image(image, t=10_000):
+def debug_image(masks, palette=None, is_demo=False, t=10_000, window="debug"):
     """show an image
     Args:
         image (_type_): image to show
         t (int): time to show image in ms
     """
-    # If image is boolean, we need to convert to 0s and 255s
-    if np.max(image) == 1:
-        np_image = image.astype(np.uint8) * 255
+    # if not given define
+    if palette == None:
+        palette = generate_distinct_colors(len(masks))
     else:
-        np_image = image.astype(np.uint8)
+        # if colors are given make sure you have enough for every mask
+        assert len(palette) == len(masks)
+
+    np_image = np.zeros((masks[0].shape[0], masks[0].shape[1], 3), dtype=np.uint8)
+
+    for label, color in enumerate(palette):
+        np_image[masks[label] == 1, :] = color
+
+    # # If image is boolean, we need to convert to 0s and 255s
+    # if np.max(image) == 1:
+    #     np_image = image.astype(np.uint8) * 255
+    # else:
+    #     np_image = image.astype(np.uint8)
+
+    # display over image
+    # color_mask = np.mean(color_seg, 2)
+    # img[color_mask != 0] = img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
 
     print("showing debug image")
-    cv2.imshow("debug image", np_image)
+    cv2.imshow(window, np_image)
     cv2.waitKey(t)  # Display the image for 10 seconds
-    cv2.destroyAllWindows()
+    # cv2.destroyAllWindows()
+
+
+def generate_distinct_colors(n):
+    """
+    Generate a list of n distinct colors.
+
+    This function generates distinct colors by evenly sampling
+    the hue component in the HSV color space and then converting
+    them to the RGB color space.
+
+    Args:
+    n (int): The number of distinct colors to generate.
+
+    Returns:
+    np.array: A list of RGB colors, each represented as a tuple of three integers.
+    """
+
+    # Generate colors in HSV space. HSV is used because varying the hue
+    # with a fixed saturation and value gives good color diversity.
+    # OpenCV's Hue range is from 0-180 (instead of 0-360), hence the scaling.
+    hsv_colors = [(i * 180 / n, 255, 255) for i in range(n)]
+
+    # Convert HSV colors to RGB
+    rgb_colors = np.array([cv2.cvtColor(np.uint8([[hsv]]), cv2.COLOR_HSV2RGB)[0][0] for hsv in hsv_colors])
+    return rgb_colors
 
 
 # for making discontinous lines if you dont have good examples to test on

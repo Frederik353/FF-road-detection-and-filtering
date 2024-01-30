@@ -3,62 +3,30 @@ import numpy as np
 
 
 def find_line_intersection(x1, y1, x2, y2, x3, y3, x4, y4):
-    """find the intersection point of two lines on a grid/image. Each line is defined by two points on the lines.
+    # Calculate the coefficients A, B, and C for each line
+    A1 = y2 - y1
+    B1 = x1 - x2
+    C1 = A1 * x1 + B1 * y1
 
-    Args:
-        x1, y1 (int, int): Coordinates of the first point on the first line.
-        x2, y2 (int, int): Coordinates of the second point on the first line.
-        x3, y3 (int, int): Coordinates of the first point on the second line.
-        x4, y4 (int, int): Coordinates of the second point on the second line.
+    A2 = y4 - y3
+    B2 = x3 - x4
+    C2 = A2 * x3 + B2 * y3
 
-    Returns:
-        tuple (int x, int y):  the intersection point
-    """
+    # Form the matrix and the constant vector
+    matrix = np.array([[A1, B1], [A2, B2]])
+    constants = np.array([C1, C2])
 
-    # Calculate the coefficients for the equations of the lines
-    den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+    # Check for parallel lines (determinant is zero)
+    if np.linalg.det(matrix) == 0:
+        return None  # Parallel or coincident lines
 
-    # If denominator is zero, lines are parallel and have no intersection within any frame
-    if den == 0:
-        return None
-
-    # Compute the intersection point
-    px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / den
-    py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / den
-
-    # remember we want the pixel of the intersection on a image hence the np.ceil()
-    return int(np.ceil(px)), int(np.ceil(py))
-
-
-def is_point_in_frame(px, py, minx, miny, maxx, maxy):
-    """
-    Determine if a point is within a specified rectangular frame.
-
-    This function checks if a given point (px, py) lies within a rectangular frame defined by its
-    minimum and maximum x and y coordinates (minx, miny, maxx, maxy). It returns True if the point
-    is inside the frame, including the boundaries, and False otherwise.
-
-    Parameters:
-    px (int or float): The x-coordinate of the point.
-    py (int or float): The y-coordinate of the point.
-    minx (int or float): The minimum x-coordinate of the frame.
-    miny (int or float): The minimum y-coordinate of the frame.
-    maxx (int or float): The maximum x-coordinate of the frame.
-    maxy (int or float): The maximum y-coordinate of the frame.
-
-    Returns:
-    bool: True if the point (px, py) is within the frame defined by (minx, miny, maxx, maxy), False otherwise.
-    """
-    return minx <= px <= maxx and miny <= py <= maxy
-
-
-def is_point_in_frame(px, py, minx, miny, maxx, maxy):
-    return minx <= px <= maxx and miny <= py <= maxy
-
+    # Calculate the intersection point
+    intersection = np.linalg.solve(matrix, constants)
+    return (int(round(intersection[0])), int(round(intersection[1])))
 
 def line_intersection(lines, frame):
     """
-    Calculate the intersection point of two lines within a given frame.
+    Calculate the intersection points of two lines within a given frame.
 
     This function takes two lines and a frame (defined by its width and height), and calculates the
     intersection point of these lines. If the intersection point is within the frame, the function
@@ -97,8 +65,46 @@ def line_intersection(lines, frame):
         # If the intersection is outside the frame, return the original lines
         return lines
 
+def is_point_in_frame(px, py, minx, miny, maxx, maxy):
+    """
+    Determine if a point is within a specified rectangular frame.
 
-def average_line(image, lines):
+    This function checks if a given point (px, py) lies within a rectangular frame defined by its
+    minimum and maximum x and y coordinates (minx, miny, maxx, maxy). It returns True if the point
+    is inside the frame, including the boundaries, and False otherwise.
+
+    Parameters:
+    px (int or float): The x-coordinate of the point.
+    py (int or float): The y-coordinate of the point.
+    minx (int or float): The minimum x-coordinate of the frame.
+    miny (int or float): The minimum y-coordinate of the frame.
+    maxx (int or float): The maximum x-coordinate of the frame.
+    maxy (int or float): The maximum y-coordinate of the frame.
+
+    Returns:
+    bool: True if the point (px, py) is within the frame defined by (minx, miny, maxx, maxy), False otherwise.
+    """
+    return minx <= px <= maxx and miny <= py <= maxy
+
+def clamp_point_to_image(x, y, image_width, image_height):
+    """
+    Clamp a point to be within the boundaries of an image.
+
+    Parameters:
+    x (int): The x-coordinate of the point.
+    y (int): The y-coordinate of the point.
+    image_width (int): The width of the image.
+    image_height (int): The height of the image.
+
+    Returns:
+    tuple: A tuple (x, y) where the point coordinates are clamped within the image dimensions.
+    """
+    x_clamped = max(0, min(x, image_width - 1))
+    y_clamped = max(0, min(y, image_height - 1))
+    return (x_clamped, y_clamped)
+
+
+def average_line(image, lines, frame):
     """
     Calculate the average left and right lines for a given set of lines on an image.
 
@@ -136,13 +142,12 @@ def average_line(image, lines):
     left_avg = np.average(left, axis=0) if left else np.nan
 
     # Generate the average left and right lines using the calculated averages, or default to a zero line if no average was found
-    left_line = make_points(image, left_avg) if not np.isnan(left_avg).any() else [0, 0, 0, 0]
-    right_line = make_points(image, right_avg) if not np.isnan(right_avg).any() else [0, 0, 0, 0]
+    left_line = make_line_points(image, left_avg, frame) if not np.isnan(left_avg).any() else [0, 0, 0, 0]
+    right_line = make_line_points(image, right_avg, frame) if not np.isnan(right_avg).any() else [0, 0, 0, 0]
 
     return np.array([left_line, right_line])
 
-
-def make_points(image, average):
+def make_line_points(image, average, frame):
     """
     Calculate two points that define a line on an image.
 
@@ -154,6 +159,7 @@ def make_points(image, average):
     Parameters:
     image (ndarray): The image on which the line will be drawn. This is used to determine the size of the image.
     average (tuple): A tuple of two elements (slope, y_int) representing the average slope and y-intercept of a set of lines.
+    frame (xmax, ymax): clamp points to be within the image frame
 
     Returns:
     ndarray: A numpy array of four integers [x1, y1, x2, y2] representing two points that define a line within the image.
@@ -163,8 +169,14 @@ def make_points(image, average):
     y2 = int(y1 * 0)
     x1 = int((y1 - y_int) // slope)
     x2 = int((y2 - y_int) // slope)
-    return np.array([x1, y1, x2, y2])
 
+    
+    # (x2, y2), (x1, y1) = find_intersection_with_frame(slope, y_int, frame)
+    
+    # x1, y1 = clamp_point_to_image(x1,y1,frame[1],frame[0])
+    # x2, y2 = clamp_point_to_image(x2,y2,frame[1],frame[0])
+
+    return np.array([x1, y1, x2, y2])
 
 def draw_lines(image, lines, width=2):
     """draws lines onto an image/ mask
@@ -183,7 +195,6 @@ def draw_lines(image, lines, width=2):
             x1, y1, x2, y2 = line  # hvis input averaged lines
             cv2.line(lines_image, (x1, y1), (x2, y2), (1, 0, 0), width)
     return lines_image
-
 
 def connect_components(img, max_distance=10):
     """
@@ -209,21 +220,17 @@ def connect_components(img, max_distance=10):
     # Iterate over every pair of components to consider potential connections
     for i in range(1, num_labels):
         for j in range(i + 1, num_labels):
-            point1 = (int(centroids[i][0]), int(centroids[i][0]))
-            point2 = (int(centroids[j][0]), int(centroids[j][0]))
+            point1 = (int(centroids[i][0]), int(centroids[i][1]))
+            point2 = (int(centroids[j][0]), int(centroids[j][1]))
             distance = np.sqrt((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2)
-
 
             # Connect the components if the closest points are within the specified maximum distance
             if distance <= max_distance:
                 # Draw a line on 'connected_img' from 'point1' to 'point2' with a color value of 1 and a thickness of 3 pixels.
                 cv2.line(connected_img, point1, point2, 1, thickness=1)  # Draw a line to connect the components
-                print("dist", distance)
-                print("p1: ", point2, "p2: ", point2)
-                debug_image([img, connected_img], t=10)
+                # debug_image([img, connected_img], t=10)
 
     return connected_img
-
 
 def mark_first_white_pixels(img, connectivity_threshold=2):
     """this function scans from middle out to the left and right and mark first  pixel found and remove the rest
@@ -269,7 +276,6 @@ def mark_first_white_pixels(img, connectivity_threshold=2):
 
     return marked_img
 
-
 def approximate_lines(ll_seg_mask, frame):
     """this function tries to improve the lane lines and section of the image
 
@@ -282,36 +288,95 @@ def approximate_lines(ll_seg_mask, frame):
         (numpy.ndarray, dtype, uint8): corrected_da_mask
     """
 
+    """ calculating desired connectivity threshold
+
+    1 / tan( theta )
+
+    theta is assumed (max) angle of the track lines in the image in radians
+    radian = deg * pi/180
+    this gives you how many pixels you have to match for the line to still be fully connected (no gap in the line)
+    90 deg is vertical, 0 deg is horizontal
+    10 deg => 6
+    30 deg => 2
+    """
+
     # scan from middle out to the left and right and mark first  pixel found and remove the rest
-    removed_outer = mark_first_white_pixels(ll_seg_mask)
+    # connectivity_threshold is how many pixels to match on each line
+    removed_outer = mark_first_white_pixels(ll_seg_mask, connectivity_threshold=10)
+    # debug_image([removed_outer], t=10000)
 
     # tries to connect the lines in the mask, if they are close enough in angle and distance
     # img, pixel_max_distance
     connected = connect_components(removed_outer, 100)
+    # debug_image([connected], t=10000)
 
     # same process as before but with the connected lines
-    removed_outer = mark_first_white_pixels(connected)
+    # a quite high connectivity threshold does not hurt hough line
+    removed_outer = mark_first_white_pixels(connected, connectivity_threshold=10)
 
     # does a houghtransform to find lines in the mask
     # Parameters for cv2.HoughLinesP
     input_image = removed_outer  # Input image for line detection
-    rho = 2                     # Distance resolution of the accumulator in pixels
-    theta = np.pi/180           # Angular resolution of the accumulator in radians (1 degree)
-    threshold = 100             # Threshold: minimum number of intersections to detect a line
-    min_line_length = 20        # Minimum length of a line (in pixels) to be accepted
-    max_line_gap = 50           # Maximum gap between points on the same line to link them
+    rho = 2  # Distance resolution of the accumulator in pixels
+    theta = np.pi / 180  # Angular resolution of the accumulator in radians (1 degree)
+    threshold = 100  # Threshold: minimum number of intersections to detect a line
+    min_line_length = 20  # Minimum length of a line (in pixels) to be accepted
+    max_line_gap = 50  # Maximum gap between points on the same line to link them
 
     # Applying the Hough Line Transform
     lines = cv2.HoughLinesP(input_image, rho, theta, threshold, minLineLength=min_line_length, maxLineGap=max_line_gap)
 
+    # test = np.empty_like(removed_outer)
+    # for line in lines:
+    #     x1, y1, x2, y2 = line.reshape(4)
+    #     cv2.line(test, (x1,y1), (x2,y2), 1, thickness=1)  # Draw a line to connect the components
+    #     # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
+    #     # parameters = np.polyfit((x1, x2), (y1, y2), 1)
+    #     debug_image([test], t=500)
+
     # might find many lines, take the average of them
-    averaged_lines = average_line(ll_seg_mask, lines)
+    averaged_lines = average_line(ll_seg_mask, lines, frame)
+
+
+    # will get int overflow if not kept within image frame
+    top_border_line =    (0,        0,        frame[1], 0       )
+    bottom_border_line = (0,        frame[0], frame[1], frame[0])
+    left_border_line =   (0,        0,        0,        frame[0])
+    right_border_line =  (frame[1], 0,        frame[1], frame[0])
+    
+    # assuming slope not steep so likly to cross left and right as opposed to top and bottom 
+
+    # left top point avg
+    left_p1 = find_line_intersection(*averaged_lines[0], *right_border_line)
+    if not is_point_in_frame(*left_p1, 0, 0, *frame):
+        print("left top")
+        left_p1 = find_line_intersection(*averaged_lines[0], *top_border_line)
+
+    # left bottom point avg
+    left_p2 = find_line_intersection(*averaged_lines[0], *left_border_line)
+    if not is_point_in_frame(*left_p2,0,0, *frame):
+        print("left bottom")
+        left_p2 = find_line_intersection(*averaged_lines[0], *bottom_border_line)
+
+    # right top point avg
+    right_p1 = find_line_intersection(*averaged_lines[1], *left_border_line)
+    if not is_point_in_frame(*right_p1, 0,0, *frame):
+        right_p1 = find_line_intersection(*averaged_lines[1], *top_border_line)
+
+    # right bottom point avg
+    right_p2 = find_line_intersection(*averaged_lines[1], *right_border_line)
+    if not is_point_in_frame(*right_p2, 0,0, *frame):
+        right_p2 = find_line_intersection(*averaged_lines[1], *bottom_border_line)
+    
+    print("points", left_p1,left_p2,right_p1,right_p2)
+    averaged_lines = [[*left_p2, *left_p1], [*right_p2, *right_p1]]
 
     # connects the two lines at the intersection point to section of the image
     lines_to_intersection = line_intersection(averaged_lines, frame)
 
     # draws them onto the image
     road_lines = draw_lines(ll_seg_mask, lines_to_intersection)
+    debug_image([road_lines], t=10_000)
 
     return road_lines
 
@@ -381,8 +446,6 @@ def filter_da(da_seg_mask, ll_seg_mask):
     return da_seg_mask, ll_seg_mask, line_aproximation
 
 
-
-
 def debug_image(masks, palette=None, is_demo=False, t=10_000, window="debug"):
     """show an image
     Args:
@@ -394,13 +457,12 @@ def debug_image(masks, palette=None, is_demo=False, t=10_000, window="debug"):
         palette = generate_distinct_colors(len(masks))
     else:
         # if colors are given make sure you have enough for every mask
-        assert len(palette) == len(masks) 
+        assert len(palette) == len(masks)
 
     np_image = np.zeros((masks[0].shape[0], masks[0].shape[1], 3), dtype=np.uint8)
 
     for label, color in enumerate(palette):
         np_image[masks[label] == 1, :] = color
-
 
     # # If image is boolean, we need to convert to 0s and 255s
     # if np.max(image) == 1:
@@ -412,22 +474,9 @@ def debug_image(masks, palette=None, is_demo=False, t=10_000, window="debug"):
     # color_mask = np.mean(color_seg, 2)
     # img[color_mask != 0] = img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
 
-
-
-    print("showing debug image")
     cv2.imshow(window, np_image)
     cv2.waitKey(t)  # Display the image for 10 seconds
     # cv2.destroyAllWindows()
-
-
-def show_seg_result(img, masks, palette=None, is_demo=False):
-    # initializes a 3-channel (RGB) image with the same height and width as masks, filled with zeros (black).
-
-    # convert to BGR
-    color_seg = color_seg[..., ::-1]
-
-    color_mask = np.mean(color_seg, 2)
-    img[color_mask != 0] = img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
 
 
 def generate_distinct_colors(n):
@@ -436,7 +485,7 @@ def generate_distinct_colors(n):
 
     This function generates distinct colors by evenly sampling
     the hue component in the HSV color space and then converting
-    them to the RGB color space. 
+    them to the RGB color space.
 
     Args:
     n (int): The number of distinct colors to generate.
@@ -444,7 +493,7 @@ def generate_distinct_colors(n):
     Returns:
     np.array: A list of RGB colors, each represented as a tuple of three integers.
     """
-    
+
     # Generate colors in HSV space. HSV is used because varying the hue
     # with a fixed saturation and value gives good color diversity.
     # OpenCV's Hue range is from 0-180 (instead of 0-360), hence the scaling.
@@ -453,5 +502,3 @@ def generate_distinct_colors(n):
     # Convert HSV colors to RGB
     rgb_colors = np.array([cv2.cvtColor(np.uint8([[hsv]]), cv2.COLOR_HSV2RGB)[0][0] for hsv in hsv_colors])
     return rgb_colors
-
-
