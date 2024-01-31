@@ -11,7 +11,7 @@ from filter_da import filter_da
 
 
 class debug_filter_da:
-    image_range = (2, 3)
+    image_range = (17, 20)
 
     save_result = False
     save_folder = "final_images"
@@ -23,7 +23,7 @@ class debug_filter_da:
         (155, 155, 155, 255),
     ]  # BGR format !!!not RGB!!!
 
-    wait_time = 1000  # ms between showing images
+    wait_time = 5_000  # ms between showing images
 
     processed_masks = []
 
@@ -151,6 +151,14 @@ def debug_image(masks, palette=None, is_demo=False, t=10_000, window="debug"):
     cv2.imshow(window, np_image)
     cv2.waitKey(t)  # Display the image for 10 seconds
     # cv2.destroyAllWindows()
+
+    # test_image = np.zeros_like(ll_seg_mask)
+    # for line in averaged_lines+averaged_lines2:
+    #     x1, y1, x2, y2 = line  # hvis input averaged lines
+    #     cv2.line(test_image, (x1, y1), (x2, y2), (1, 0, 0), 1)
+    # debug_image([test_image])
+
+    # print("lines", averaged_lines)
 
 
 def generate_distinct_colors(n):

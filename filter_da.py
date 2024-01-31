@@ -24,6 +24,7 @@ def find_line_intersection(x1, y1, x2, y2, x3, y3, x4, y4):
     intersection = np.linalg.solve(matrix, constants)
     return (int(round(intersection[0])), int(round(intersection[1])))
 
+
 def line_intersection(lines, frame):
     """
     Calculate the intersection points of two lines within a given frame.
@@ -65,6 +66,7 @@ def line_intersection(lines, frame):
         # If the intersection is outside the frame, return the original lines
         return lines
 
+
 def is_point_in_frame(px, py, minx, miny, maxx, maxy):
     """
     Determine if a point is within a specified rectangular frame.
@@ -85,6 +87,7 @@ def is_point_in_frame(px, py, minx, miny, maxx, maxy):
     bool: True if the point (px, py) is within the frame defined by (minx, miny, maxx, maxy), False otherwise.
     """
     return minx <= px <= maxx and miny <= py <= maxy
+
 
 def clamp_point_to_image(x, y, image_width, image_height):
     """
@@ -124,28 +127,68 @@ def average_line(image, lines, frame):
     left = []
     right = []
 
-    if lines is not None:
-        for line in lines:
-            x1, y1, x2, y2 = line.reshape(4)
-            # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
-            parameters = np.polyfit((x1, x2), (y1, y2), 1)
-            slope = parameters[0]
-            y_int = parameters[1]
-            # Lines with a negative slope are considered left lines, positive slopes are right lines
-            if slope < 0:
-                left.append((slope, y_int))
-            else:
-                right.append((slope, y_int))
+
+
+    # Define the midpoint in the x-direction
+    mid_x = frame[1] // 2
+
+    # # Extract all x-coordinates
+    x_coords = lines[:, :, 0]
+
+    # Determine if both x-coordinates of each line are less than mid_x (left side)
+    left_mask = np.all(x_coords < mid_x, axis=1)
+
+    # Determine if both x-coordinates of each line are greater than or equal to mid_x (right side)
+    right_mask = np.all(x_coords >= mid_x, axis=1)
+
+    # Use the masks to filter the lines
+    left = lines[left_mask]
+    right = lines[right_mask]
+
+    left2, right2 = [], []
+
+    for line in right:
+        x1, y1, x2, y2 = line.reshape(4)
+        # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
+        parameters = np.polyfit((x1, x2), (y1, y2), 1)
+        slope = parameters[0]
+        y_int = parameters[1]
+        right2.append((slope, y_int))
+
+    for line in left:
+        x1, y1, x2, y2 = line.reshape(4)
+        # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
+        parameters = np.polyfit((x1, x2), (y1, y2), 1)
+        slope = parameters[0]
+        y_int = parameters[1]
+        left2.append((slope, y_int))
+
+    right, left = right2, left2
+ 
+
+    # if lines is not None:
+    #     for line in lines:
+    #         x1, y1, x2, y2 = line.reshape(4)
+    #         # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
+    #         parameters = np.polyfit((x1, x2), (y1, y2), 1)
+    #         slope = parameters[0]
+    #         y_int = parameters[1]
+    #         # Lines with a negative slope are considered left lines, positive slopes are right lines
+    #         if slope < 0:
+    #             left.append((slope, y_int))
+    #         else:
+    #             right.append((slope, y_int))
 
     # Calculate the average slope and y-intercept for both the left and right lines
     right_avg = np.average(right, axis=0) if right else np.nan
     left_avg = np.average(left, axis=0) if left else np.nan
 
     # Generate the average left and right lines using the calculated averages, or default to a zero line if no average was found
-    left_line = make_line_points(image, left_avg, frame) if not np.isnan(left_avg).any() else [0, 0, 0, 0]
-    right_line = make_line_points(image, right_avg, frame) if not np.isnan(right_avg).any() else [0, 0, 0, 0]
+    left_line = make_line_points(image, left_avg, frame) if not np.isnan(left_avg).any() else None
+    right_line = make_line_points(image, right_avg, frame) if not np.isnan(right_avg).any() else None
 
-    return np.array([left_line, right_line])
+    return left_line, right_line
+
 
 def make_line_points(image, average, frame):
     """
@@ -170,13 +213,13 @@ def make_line_points(image, average, frame):
     x1 = int((y1 - y_int) // slope)
     x2 = int((y2 - y_int) // slope)
 
-    
     # (x2, y2), (x1, y1) = find_intersection_with_frame(slope, y_int, frame)
-    
+
     # x1, y1 = clamp_point_to_image(x1,y1,frame[1],frame[0])
     # x2, y2 = clamp_point_to_image(x2,y2,frame[1],frame[0])
 
     return np.array([x1, y1, x2, y2])
+
 
 def draw_lines(image, lines, width=2):
     """draws lines onto an image/ mask
@@ -195,6 +238,7 @@ def draw_lines(image, lines, width=2):
             x1, y1, x2, y2 = line  # hvis input averaged lines
             cv2.line(lines_image, (x1, y1), (x2, y2), (1, 0, 0), width)
     return lines_image
+
 
 def connect_components(img, max_distance=10):
     """
@@ -231,6 +275,7 @@ def connect_components(img, max_distance=10):
                 # debug_image([img, connected_img], t=10)
 
     return connected_img
+
 
 def mark_first_white_pixels(img, connectivity_threshold=2):
     """this function scans from middle out to the left and right and mark first  pixel found and remove the rest
@@ -276,6 +321,42 @@ def mark_first_white_pixels(img, connectivity_threshold=2):
 
     return marked_img
 
+
+# ! depricated was used to deal with intager overflow in find_line_intersection but unlikley with new method and cv2 handles drawing lines with parts outside the image fine
+def clamp_lines_inside_frame(left_line, right_line, frame):
+    # will get int overflow if not kept within image frame
+    top_border_line = (0, 0, frame[1], 0)
+    bottom_border_line = (0, frame[0], frame[1], frame[0])
+    left_border_line = (0, 0, 0, frame[0])
+    right_border_line = (frame[1], 0, frame[1], frame[0])
+
+    # assuming slope not steep so likly to cross left and right as opposed to top and bottom
+
+    # left top point avg
+    left_p1 = find_line_intersection(*left_line, *right_border_line)
+    if not is_point_in_frame(*left_p1, 0, 0, *frame[::-1]):
+        left_p1 = find_line_intersection(*left_line, *top_border_line)
+
+    # left bottom point avg
+    left_p2 = find_line_intersection(*left_line, *left_border_line)
+    if not is_point_in_frame(*left_p2, 0, 0, *frame[::-1]):
+        left_p2 = find_line_intersection(*left_line, *bottom_border_line)
+
+    # right top point avg
+    right_p1 = find_line_intersection(*right_line, *left_border_line)
+    if not is_point_in_frame(*right_p1, 0, 0, *frame[::-1]):
+        right_p1 = find_line_intersection(*right_line, *top_border_line)
+
+    # right bottom point avg
+    right_p2 = find_line_intersection(*right_line, *right_border_line)
+    if not is_point_in_frame(*right_p2, 0, 0, *frame[::-1]):
+        right_p2 = find_line_intersection(*right_line, *bottom_border_line)
+
+
+    # todo change to left right line same for line intersection for consitency
+    averaged_lines = [[*left_p2, *left_p1], [*right_p2, *right_p1]]
+    return averaged_lines
+
 def approximate_lines(ll_seg_mask, frame):
     """this function tries to improve the lane lines and section of the image
 
@@ -303,12 +384,10 @@ def approximate_lines(ll_seg_mask, frame):
     # scan from middle out to the left and right and mark first  pixel found and remove the rest
     # connectivity_threshold is how many pixels to match on each line
     removed_outer = mark_first_white_pixels(ll_seg_mask, connectivity_threshold=10)
-    # debug_image([removed_outer], t=10000)
 
     # tries to connect the lines in the mask, if they are close enough in angle and distance
     # img, pixel_max_distance
     connected = connect_components(removed_outer, 100)
-    # debug_image([connected], t=10000)
 
     # same process as before but with the connected lines
     # a quite high connectivity threshold does not hurt hough line
@@ -326,57 +405,33 @@ def approximate_lines(ll_seg_mask, frame):
     # Applying the Hough Line Transform
     lines = cv2.HoughLinesP(input_image, rho, theta, threshold, minLineLength=min_line_length, maxLineGap=max_line_gap)
 
-    # test = np.empty_like(removed_outer)
-    # for line in lines:
-    #     x1, y1, x2, y2 = line.reshape(4)
-    #     cv2.line(test, (x1,y1), (x2,y2), 1, thickness=1)  # Draw a line to connect the components
-    #     # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
-    #     # parameters = np.polyfit((x1, x2), (y1, y2), 1)
-    #     debug_image([test], t=500)
+    test = np.empty_like(removed_outer)
+    for line in lines:
+        x1, y1, x2, y2 = line.reshape(4)
+        cv2.line(test, (x1,y1), (x2,y2), 1, thickness=1)  # Draw a line to connect the components
+        # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
+        # parameters = np.polyfit((x1, x2), (y1, y2), 1)
+        debug_image([test], t=500)
 
     # might find many lines, take the average of them
-    averaged_lines = average_line(ll_seg_mask, lines, frame)
+    left_line, right_line = average_line(ll_seg_mask, lines, frame)
 
+    # if no line is found we make a educated guess
+    # todo find better guess, either by a better avg or by other technique
+    if left_line is None:
+        left_line = [0, 406, 1280, 175]
 
-    # will get int overflow if not kept within image frame
-    top_border_line =    (0,        0,        frame[1], 0       )
-    bottom_border_line = (0,        frame[0], frame[1], frame[0])
-    left_border_line =   (0,        0,        0,        frame[0])
-    right_border_line =  (frame[1], 0,        frame[1], frame[0])
-    
-    # assuming slope not steep so likly to cross left and right as opposed to top and bottom 
+    if right_line is None:
+        right_line = [1280, 380, 0, 155]
 
-    # left top point avg
-    left_p1 = find_line_intersection(*averaged_lines[0], *right_border_line)
-    if not is_point_in_frame(*left_p1, 0, 0, *frame):
-        print("left top")
-        left_p1 = find_line_intersection(*averaged_lines[0], *top_border_line)
-
-    # left bottom point avg
-    left_p2 = find_line_intersection(*averaged_lines[0], *left_border_line)
-    if not is_point_in_frame(*left_p2,0,0, *frame):
-        print("left bottom")
-        left_p2 = find_line_intersection(*averaged_lines[0], *bottom_border_line)
-
-    # right top point avg
-    right_p1 = find_line_intersection(*averaged_lines[1], *left_border_line)
-    if not is_point_in_frame(*right_p1, 0,0, *frame):
-        right_p1 = find_line_intersection(*averaged_lines[1], *top_border_line)
-
-    # right bottom point avg
-    right_p2 = find_line_intersection(*averaged_lines[1], *right_border_line)
-    if not is_point_in_frame(*right_p2, 0,0, *frame):
-        right_p2 = find_line_intersection(*averaged_lines[1], *bottom_border_line)
-    
-    print("points", left_p1,left_p2,right_p1,right_p2)
-    averaged_lines = [[*left_p2, *left_p1], [*right_p2, *right_p1]]
+    averaged_lines = [left_line, right_line]
 
     # connects the two lines at the intersection point to section of the image
     lines_to_intersection = line_intersection(averaged_lines, frame)
 
     # draws them onto the image
     road_lines = draw_lines(ll_seg_mask, lines_to_intersection)
-    debug_image([road_lines], t=10_000)
+    # debug_image([road_lines], t=10_000)
 
     return road_lines
 
@@ -423,9 +478,9 @@ def filter_da(da_seg_mask, ll_seg_mask):
         (numpy.ndarray, dtype, uint8): improved road line mask
     """
 
-    # Frame  (xmax, ymax)
+    # Frame  (ymax, xmax)
+    # todo remove frame and use np.shape instead or use frame and change from (y,x) to (x,y)
     frame = da_seg_mask.shape
-    print(frame)
 
     # change dtype to uint8 expected by cv2
     ll_seg_mask = ll_seg_mask.astype(np.uint8)
