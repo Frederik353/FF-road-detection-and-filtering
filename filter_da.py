@@ -124,60 +124,33 @@ def average_line(image, lines, frame):
     ndarray: A numpy array containing two lines (each an array of four integers), representing the average left and right lines.
     """
 
-    left = []
-    right = []
+    # todo debug and reread this function, super tired now
 
-
+    left, right = [], []
 
     # Define the midpoint in the x-direction
+    # Assuming 'frame' is a tuple or list with (height, width), hence frame[1] is the width
     mid_x = frame[1] // 2
 
-    # # Extract all x-coordinates
-    x_coords = lines[:, :, 0]
-
-    # Determine if both x-coordinates of each line are less than mid_x (left side)
-    left_mask = np.all(x_coords < mid_x, axis=1)
-
-    # Determine if both x-coordinates of each line are greater than or equal to mid_x (right side)
-    right_mask = np.all(x_coords >= mid_x, axis=1)
-
-    # Use the masks to filter the lines
-    left = lines[left_mask]
-    right = lines[right_mask]
-
-    left2, right2 = [], []
-
-    for line in right:
+    # Process each line to sort by side and then by correct slope direction
+    for line in lines:
         x1, y1, x2, y2 = line.reshape(4)
-        # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
+
+        # Calculate slope
         parameters = np.polyfit((x1, x2), (y1, y2), 1)
         slope = parameters[0]
         y_int = parameters[1]
-        right2.append((slope, y_int))
 
-    for line in left:
-        x1, y1, x2, y2 = line.reshape(4)
-        # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
-        parameters = np.polyfit((x1, x2), (y1, y2), 1)
-        slope = parameters[0]
-        y_int = parameters[1]
-        left2.append((slope, y_int))
-
-    right, left = right2, left2
- 
-
-    # if lines is not None:
-    #     for line in lines:
-    #         x1, y1, x2, y2 = line.reshape(4)
-    #         # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
-    #         parameters = np.polyfit((x1, x2), (y1, y2), 1)
-    #         slope = parameters[0]
-    #         y_int = parameters[1]
-    #         # Lines with a negative slope are considered left lines, positive slopes are right lines
-    #         if slope < 0:
-    #             left.append((slope, y_int))
-    #         else:
-    #             right.append((slope, y_int))
+        # Check if line is on the left side of the screen
+        if x1 < mid_x and x2 < mid_x:
+            # Further check if the slope is negative (expected direction for left)
+            if slope < 0:
+                left.append((slope, y_int))
+        # Check if line is on the right side of the screen
+        elif x1 >= mid_x and x2 >= mid_x:
+            # Further check if the slope is positive (expected direction for right)
+            if slope > 0:
+                right.append((slope, y_int))
 
     # Calculate the average slope and y-intercept for both the left and right lines
     right_avg = np.average(right, axis=0) if right else np.nan
@@ -352,10 +325,10 @@ def clamp_lines_inside_frame(left_line, right_line, frame):
     if not is_point_in_frame(*right_p2, 0, 0, *frame[::-1]):
         right_p2 = find_line_intersection(*right_line, *bottom_border_line)
 
-
     # todo change to left right line same for line intersection for consitency
     averaged_lines = [[*left_p2, *left_p1], [*right_p2, *right_p1]]
     return averaged_lines
+
 
 def approximate_lines(ll_seg_mask, frame):
     """this function tries to improve the lane lines and section of the image
@@ -405,13 +378,13 @@ def approximate_lines(ll_seg_mask, frame):
     # Applying the Hough Line Transform
     lines = cv2.HoughLinesP(input_image, rho, theta, threshold, minLineLength=min_line_length, maxLineGap=max_line_gap)
 
-    test = np.empty_like(removed_outer)
-    for line in lines:
-        x1, y1, x2, y2 = line.reshape(4)
-        cv2.line(test, (x1,y1), (x2,y2), 1, thickness=1)  # Draw a line to connect the components
-        # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
-        # parameters = np.polyfit((x1, x2), (y1, y2), 1)
-        debug_image([test], t=500)
+    # test = np.empty_like(removed_outer)
+    # for line in lines:
+    #     x1, y1, x2, y2 = line.reshape(4)
+    #     cv2.line(test, (x1, y1), (x2, y2), 1, thickness=1)  # Draw a line to connect the components
+    #     # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
+    #     # parameters = np.polyfit((x1, x2), (y1, y2), 1)
+    #     debug_image([test], t=500)
 
     # might find many lines, take the average of them
     left_line, right_line = average_line(ll_seg_mask, lines, frame)

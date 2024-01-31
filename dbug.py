@@ -11,7 +11,7 @@ from filter_da import filter_da
 
 
 class debug_filter_da:
-    image_range = (17, 20)
+    image_range = (1, 400)
 
     save_result = False
     save_folder = "final_images"
@@ -23,7 +23,7 @@ class debug_filter_da:
         (155, 155, 155, 255),
     ]  # BGR format !!!not RGB!!!
 
-    wait_time = 5_000  # ms between showing images
+    wait_time = 500  # ms between showing images
 
     processed_masks = []
 
