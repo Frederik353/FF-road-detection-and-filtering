@@ -23,7 +23,7 @@ class debug_filter_da:
         (155, 155, 155, 255),
     ]  # BGR format !!!not RGB!!!
 
-    wait_time = 500  # ms between showing images
+    wait_time = 5000  # ms between showing images
 
     processed_masks = []
 

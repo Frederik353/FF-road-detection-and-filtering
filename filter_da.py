@@ -452,7 +452,7 @@ def filter_da(da_seg_mask, ll_seg_mask):
     """
 
     # Frame  (ymax, xmax)
-    # todo remove frame and use np.shape instead or use frame and change from (y,x) to (x,y)
+    # todo remove frame and use np.shape instead or use frame and change from (y,x) to (x,y) for more consistent and easier to understand code
     frame = da_seg_mask.shape
 
     # change dtype to uint8 expected by cv2
