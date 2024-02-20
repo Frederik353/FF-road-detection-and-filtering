@@ -1,6 +1,6 @@
 def connect_components_directionally(img, frame, max_distance=10, desired_angle=0, angle_tolerance=10):
     """
-    This function tries to connect components in a binary image in a given direction with a specified tolerance and maximum distance. 
+    This function tries to connect components in a binary image in a given direction with a specified tolerance and maximum distance.
     It finds the closest edge points between components that are within the given angle tolerance and distance, and draws a line to connect them.
 
     Args:
@@ -23,7 +23,7 @@ def connect_components_directionally(img, frame, max_distance=10, desired_angle=
     # Create a new image for drawing the connections
     connected_img = np.copy(img)
 
-    print("number of lines detected: ", num_labels - 1) # -1 as the first label is the background
+    print("number of lines detected: ", num_labels - 1)  # -1 as the first label is the background
 
     # Iterate over every pair of components to consider potential connections
     for i in range(1, num_labels):
@@ -33,9 +33,12 @@ def connect_components_directionally(img, frame, max_distance=10, desired_angle=
 
             # Connect the components if the closest points are within the specified maximum distance
             if pt1 is not None and distance <= max_distance:
-                cv2.line(connected_img, tuple(pt1[::-1]), tuple(pt2[::-1]), 1, 3)  # Draw a line to connect the components
+                cv2.line(
+                    connected_img, tuple(pt1[::-1]), tuple(pt2[::-1]), 1, 3
+                )  # Draw a line to connect the components
 
     return connected_img
+
 
 def find_closest_edge_points(component1, component2, labels, desired_angle_rad, angle_tolerance_rad, frame):
     # Extract the edge points for each component
@@ -51,7 +54,8 @@ def find_closest_edge_points(component1, component2, labels, desired_angle_rad, 
     for pt1 in edge_points1:
         if pt1[1] > (frame[0] / 2):
             center = 1
-        else: center = -1
+        else:
+            center = -1
 
         for pt2 in edge_points2:
             # Calculate the vector from pt1 to pt2
@@ -60,7 +64,11 @@ def find_closest_edge_points(component1, component2, labels, desired_angle_rad, 
             angle = np.arctan2(vector[1], vector[0])
 
             # Check if the angle is within the tolerance
-            if desired_angle_rad * center - angle_tolerance_rad <= angle <= desired_angle_rad * center + angle_tolerance_rad:
+            if (
+                desired_angle_rad * center - angle_tolerance_rad
+                <= angle
+                <= desired_angle_rad * center + angle_tolerance_rad
+            ):
                 # Update the closest points if the distance is less than the minimum found so far
                 if distance < min_distance:
                     min_distance = distance
@@ -80,10 +88,12 @@ def grey(image):
 def gauss(image):
     return cv2.GaussianBlur(image, (5, 5), 0)
 
+
 # Canny edge detection
 def canny(image, nx, ny):
     edges = cv2.Canny(image, 1, 1)
     return edges
+
 
 def region(image):
     height, width = image.shape
@@ -129,7 +139,7 @@ def skeletonize(img):
     return skel
 
 
-def remove_small_components(image ,min_size_threshold):
+def remove_small_components(image, min_size_threshold):
     # Find connected components
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(image, connectivity=8)
 
@@ -202,3 +212,147 @@ def mark_first_white_pixels(img, connectivity_threshold=2):
             marked_img[row, start_index : start_index + connectivity_threshold] = 1
 
     return marked_img
+
+
+# ! depricated was used to deal with intager overflow in find_line_intersection but unlikley with new method and cv2 handles drawing lines with parts outside the image fine
+def clamp_lines_inside_frame(left_line, right_line, frame):
+    # will get int overflow if not kept within image frame
+    top_border_line = (0, 0, frame[1], 0)
+    bottom_border_line = (0, frame[0], frame[1], frame[0])
+    left_border_line = (0, 0, 0, frame[0])
+    right_border_line = (frame[1], 0, frame[1], frame[0])
+
+    # assuming slope not steep so likly to cross left and right as opposed to top and bottom
+
+    # left top point avg
+    left_p1 = find_line_intersection(*left_line, *right_border_line)
+    if not is_point_in_frame(*left_p1, 0, 0, *frame[::-1]):
+        left_p1 = find_line_intersection(*left_line, *top_border_line)
+
+    # left bottom point avg
+    left_p2 = find_line_intersection(*left_line, *left_border_line)
+    if not is_point_in_frame(*left_p2, 0, 0, *frame[::-1]):
+        left_p2 = find_line_intersection(*left_line, *bottom_border_line)
+
+    # right top point avg
+    right_p1 = find_line_intersection(*right_line, *left_border_line)
+    if not is_point_in_frame(*right_p1, 0, 0, *frame[::-1]):
+        right_p1 = find_line_intersection(*right_line, *top_border_line)
+
+    # right bottom point avg
+    right_p2 = find_line_intersection(*right_line, *right_border_line)
+    if not is_point_in_frame(*right_p2, 0, 0, *frame[::-1]):
+        right_p2 = find_line_intersection(*right_line, *bottom_border_line)
+
+    # todo change to left right line same for line intersection for consitency
+    averaged_lines = [[*left_p2, *left_p1], [*right_p2, *right_p1]]
+    return averaged_lines
+
+
+def calculate_optical_flow(prev, current):
+
+    # Calculate optical flow using Farneback method
+    flow = cv2.calcOpticalFlowFarneback(
+        prev=prev,
+        next=current,
+        flow=None,
+        pyr_scale=0.75,
+        levels=5,
+        winsize=100,
+        iterations=3,
+        poly_n=5,
+        poly_sigma=1.2,
+        flags=0,
+    )
+
+    # Compute magnitude and angle (currently unused) of the flow
+    magnitude, angle = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+
+    # Normalize magnitude for visualization
+    normalized_magnitude = cv2.normalize(magnitude, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+    # Normalize angle (0 to 2*pi) to fit into the Hue channel (0-180)
+    hue = angle * (180 / np.pi) / 2
+
+    # Set saturation to maximum
+    saturation = np.ones_like(magnitude) * 255
+
+    # Normalize magnitude for Value channel
+    value = cv2.normalize(magnitude, None, 0, 255, cv2.NORM_MINMAX)
+
+    # Stack channels to form HSV image, convert types as needed
+    hsv = np.stack([hue, saturation, value], axis=-1).astype(np.uint8)
+
+    # Convert HSV to BGR (or RGB) for visualization
+    flow_bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+    # ------------------------------------------------
+
+    # Create a copy of the current frame for drawing (convert to color if necessary)
+    if len(current.shape) == 2 or current.shape[2] == 1:  # if the image is grayscale
+        frame_with_arrows = cv2.cvtColor(current, cv2.COLOR_GRAY2BGR)
+    else:
+        frame_with_arrows = np.copy(current)
+
+    # Parameters for arrow drawing
+    scale = 1  # Scale factor for the length of the arrows
+
+    # Iterate through each pixel
+    for y in range(flow.shape[0]):
+        for x in range(flow.shape[1]):
+            # Determine the end point of the vector
+            if np.sqrt(flow[y, x, 0] ** 2 + flow[y, x, 1] ** 2) < 1:
+                continue
+            end_point = (int(x + flow[y, x, 0] * scale), int(y + flow[y, x, 1] * scale))
+            cv2.arrowedLine(frame_with_arrows, (x, y), end_point, (0, 255, 0), thickness=1, tipLength=0.3)
+
+    return normalized_magnitude, frame_with_arrows
+
+    # optical flow
+    if len(prev_magnitudes) < 2:
+        average_magnitude = np.zeros_like(line_aproximation)
+        prev_magnitudes.append(average_magnitude)
+    else:
+        magnitudes, vis = calculate_optical_flow(prev_mask, ll_seg_mask)
+        magnitudes = np.array(magnitudes)
+        prev_magnitudes.append(magnitudes)
+        prev_magnitudes = prev_magnitudes[-10:]
+
+        average_magnitude = np.mean(prev_magnitudes)
+        debug_image([ll_seg_mask, prev_mask, vis], t=1000)
+    prev_mask = ll_seg_mask
+
+
+
+
+def cast_ray(mask, start, angle_deg, max_distance=1000):
+    angle_rad = np.radians(angle_deg)
+    step = np.array([np.cos(angle_rad), np.sin(angle_rad)])
+    current_pos = np.array(start, dtype=np.float32)
+
+    for _ in range(max_distance):
+        current_pos += step
+        x, y = int(current_pos[0]), int(current_pos[1])
+
+        if x < 0 or x >= mask.shape[1] or y < 0 or y >= mask.shape[0]:
+            # break  # Ray is out of bounds
+            return (x - 2, y - 2)
+
+        if mask[y, x] != 0:
+            return (x, y)  # First non-zero pixel found
+
+    return None  # No non-zero pixel found
+
+
+def raytrace_from_point(mask, start, angular_resolution=1):
+    # hits = []
+    marked = np.zeros_like(mask)
+    for angle in range(0, 180, angular_resolution):
+        hit = cast_ray(mask, start, angle)
+        # hits.append(hit)
+        cv2.circle(marked, hit, 1, (255, 0, 0), 10)  # Draw each hit
+        cv2.line(marked, start, hit, (255, 0, 0), 1)  # Draw the ray path
+
+    debug_image([marked], t=10_000)
+    return marked
+

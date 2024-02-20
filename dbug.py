@@ -11,7 +11,7 @@ from filter_da import filter_da
 
 
 class debug_filter_da:
-    image_range = (30, 36)
+    image_range = (0, 36)
     # 30 missing left
     # 35 crossing center
 
