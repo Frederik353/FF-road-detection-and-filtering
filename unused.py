@@ -308,6 +308,14 @@ def calculate_optical_flow(prev, current):
 
     return normalized_magnitude, frame_with_arrows
 
+
+prev_magnitudes = []
+prev_mask = []
+
+global prev_mask, prev_magnitudes
+
+
+
     # optical flow
     if len(prev_magnitudes) < 2:
         average_magnitude = np.zeros_like(line_aproximation)

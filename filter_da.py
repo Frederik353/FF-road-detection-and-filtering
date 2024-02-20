@@ -1,11 +1,41 @@
 import cv2
 import numpy as np
 
+line_buffer = []
+buffer_size = 10
+
+# todo add type hints
+
+
+def calculate_exponential_weighted_average(buffer, alpha):
+    # Calculate weights using exponential decay
+    # The most recent line has the highest weight and oldest the lowest
+    weights = [alpha ** (len(buffer) - 1 - i) for i in range(len(buffer))]
+    # Normalize weights so they sum to 1
+    normalized_weights = [w / sum(weights) for w in weights]
+
+    # Initialize sums for weighted averages
+    avg_left = [0, 0, 0, 0]
+    avg_right = [0, 0, 0, 0]
+
+    # Calculate the weighted average for left and right lines
+    for i, ((left_line, right_line), weight) in enumerate(zip(buffer, normalized_weights)):
+        avg_left = [avg + (val * weight) for avg, val in zip(avg_left, left_line)]
+        avg_right = [avg + (val * weight) for avg, val in zip(avg_right, right_line)]
+
+    avg_left = [int(round(val)) for val in avg_left]
+    avg_right = [int(round(val)) for val in avg_right]
+
+    return avg_left, avg_right
+
+
+def add_line_to_buffer(line):
+    global line_buffer, buffer_size
+    line_buffer.append(line)
+    return line_buffer[-buffer_size:]
+
 
 # array holding previous n masks for optical flow
-prev_magnitudes = []
-prev_mask = []
-
 def find_line_intersection(x1, y1, x2, y2, x3, y3, x4, y4):
     # Calculate the coefficients A, B, and C for each line
     A1 = y2 - y1
@@ -111,7 +141,52 @@ def clamp_point_to_image(x, y, image_width, image_height):
     return (x_clamped, y_clamped)
 
 
-def average_line(image, lines, frame):
+def median_lines(image, lines, frame):
+    """
+    Calculate the median left and right lines for a given set of lines on an image.
+
+    This function processes a list of lines (each defined by two points) and classifies them
+    as either part of the left or right side based on their slope. It then calculates the
+    median slope and y-intercept for the lines on each side and uses these medians to
+    create two median lines, one for the left and one for the right.
+
+    Parameters:
+    image (ndarray): The image where the lines are found. Used for determining the length and position of the median lines.
+    lines (list of ndarray): A list of lines, where each line is represented by an ndarray of four integers [x1, y1, x2, y2].
+
+    Returns:
+    ndarray: A numpy array containing two lines (each an array of four integers), representing the median left and right lines.
+    """
+
+    left, right = [], []
+
+    # Define the midpoint in the x-direction
+    mid_x = frame[1] // 2
+
+    # Process each line to sort by side and then by correct slope direction
+    for line in lines:
+        x1, y1, x2, y2 = line.reshape(4)
+        parameters = np.polyfit((x1, x2), (y1, y2), 1)
+        slope = parameters[0]
+        y_int = parameters[1]
+
+        if x1 < mid_x and x2 < mid_x and slope < 0:
+            left.append((slope, y_int))
+        elif x1 >= mid_x and x2 >= mid_x and slope > 0:
+            right.append((slope, y_int))
+
+    # Calculate the median slope and y-intercept for both the left and right lines
+    right_median = np.median(right, axis=0) if right else np.nan
+    left_median = np.median(left, axis=0) if left else np.nan
+
+    # Generate the median left and right lines using the calculated medians
+    left_line = make_line_points(image, left_median, frame) if not np.isnan(left_median).any() else None
+    right_line = make_line_points(image, right_median, frame) if not np.isnan(right_median).any() else None
+
+    return left_line, right_line
+
+
+def average_lines(image, lines, frame):
     """
     Calculate the average left and right lines for a given set of lines on an image.
 
@@ -255,47 +330,9 @@ def connect_components(img, max_distance=10):
     return connected_img
 
 
-def cast_ray(mask, start, angle_deg, max_distance=1000):
-    angle_rad = np.radians(angle_deg)
-    step = np.array([np.cos(angle_rad), np.sin(angle_rad)])
-    current_pos = np.array(start, dtype=np.float32)
-
-    for _ in range(max_distance):
-        current_pos += step
-        x, y = int(current_pos[0]), int(current_pos[1])
-
-        if x < 0 or x >= mask.shape[1] or y < 0 or y >= mask.shape[0]:
-            # break  # Ray is out of bounds
-            return (x - 2, y - 2)
-
-        if mask[y, x] != 0:
-            return (x, y)  # First non-zero pixel found
-
-    return None  # No non-zero pixel found
-
-
-def raytrace_from_point(mask, start, angular_resolution=1):
-    # hits = []
-    marked = np.zeros_like(mask)
-    for angle in range(0, 180, angular_resolution):
-        hit = cast_ray(mask, start, angle)
-        # hits.append(hit)
-        cv2.circle(marked, hit, 1, (255, 0, 0), 10)  # Draw each hit
-        cv2.line(marked, start, hit, (255, 0, 0), 1)  # Draw the ray path
-
-    debug_image([marked], t=10_000)
-    return marked
-
-
-def mark_first_white_pixels(img, connectivity_threshold=2):
-    print(img.shape)
-
-    return raytrace_from_point(img, (img.shape[1] // 2, img.shape[0] - 1))
-
-
 # todo replace with raytracing
-"""
 def mark_first_white_pixels(img, connectivity_threshold=2):
+    """
     this function scans from middle out to the left and right and mark first  pixel found and remove the rest
 
     Args:
@@ -305,6 +342,7 @@ def mark_first_white_pixels(img, connectivity_threshold=2):
 
     Returns:
         (numpy.ndarray, dtype, uint8): image mask with only the first white pixels found in each row
+    """
 
     # Create an output image filled with zeros
     marked_img = np.zeros_like(img)
@@ -327,6 +365,7 @@ def mark_first_white_pixels(img, connectivity_threshold=2):
     right_indices[right_indices > 0] += middle
 
     # Marking the pixels with connectivity threshold
+    # Scan from middle out
     for row in range(img.shape[0]):
         if left_indices[row] > 0:
             start_index = left_indices[row]
@@ -336,10 +375,21 @@ def mark_first_white_pixels(img, connectivity_threshold=2):
             start_index = right_indices[row]
             marked_img[row, start_index : start_index + connectivity_threshold] = 1
 
+    # Scan from bottom up for vertical scan
+    for col in range(img.shape[1]):
+        # Find the bottom-most white pixel in the column
+        col_pixels = img[:, col]
+        non_zero_indices = np.nonzero(col_pixels)[0]
+        if non_zero_indices.size > 0:
+            bottom_most_index = non_zero_indices[-1]  # Take the last non-zero index
+            # Mark the pixels with connectivity threshold for vertical scan
+            marked_img[max(0, bottom_most_index - connectivity_threshold) : bottom_most_index + 1, col] = 1
+
     return marked_img
-"""
+
 
 def approximate_lines(ll_seg_mask, frame):
+    global line_buffer
     """this function tries to improve the lane lines and section of the image
 
     Args:
@@ -381,7 +431,7 @@ def approximate_lines(ll_seg_mask, frame):
 
     # same process as before but with the connected lines
     # a quite high connectivity threshold does not hurt hough line
-    removed_outer = mark_first_white_pixels(connected, connectivity_threshold=10)
+    removed_outer = mark_first_white_pixels(connected, connectivity_threshold=1)
 
     # todo try spline interpolation or split and merge line fittng or curve fitting
     # todo time avg line, look at line movment over time and see if it makes sense for the line to move that much in that time
@@ -399,13 +449,14 @@ def approximate_lines(ll_seg_mask, frame):
     )
 
     # might find many lines, take the average of them
-    left_line, right_line = average_line(ll_seg_mask, lines, frame)
+    # left_line, right_line = average_lines(ll_seg_mask, lines, frame)
+    left_line, right_line = median_lines(ll_seg_mask, lines, frame)
 
-    test = np.empty_like(removed_outer)
-    for line in lines:
-        x1, y1, x2, y2 = line.reshape(4)
-        cv2.line(test, (x1, y1), (x2, y2), 1, thickness=2)  # Draw a line to connect the components
-        debug_image([ll_seg_mask, test], t=10_00)
+    # test = np.empty_like(removed_outer)
+    # for line in lines:
+    #     x1, y1, x2, y2 = line.reshape(4)
+    #     cv2.line(test, (x1, y1), (x2, y2), 1, thickness=2)  # Draw a line to connect the components
+    #     debug_image([ll_seg_mask, test], t=10_00)
 
     # if no line is found we try to make an educated guess
     # todo find better guess, either by a better avg or by other technique
@@ -419,12 +470,17 @@ def approximate_lines(ll_seg_mask, frame):
 
     averaged_lines = [left_line, right_line]
 
+    add_line_to_buffer(averaged_lines)
+    exponential_weighted_average = calculate_exponential_weighted_average(line_buffer, 0.8)
+    print(exponential_weighted_average)
+
     # connects the two lines at the intersection point to section of the image
-    lines_to_intersection = line_intersection(averaged_lines, frame)
+    lines_to_intersection = line_intersection(exponential_weighted_average, frame)
 
     # draws them onto the image
     road_lines = draw_lines(ll_seg_mask, lines_to_intersection)
 
+    # debug_image([ll_seg_mask, road_lines, connected, removed_outer], t=5000)
     # TODO: combine houglines with first pixels
     # road_lines += removed_outer
     # road_lines = connect_components(road_lines, 100)
@@ -462,7 +518,6 @@ def remove_da_outside_lines(da_seg_mask, approximate_lines, frame):
 
 
 def filter_da(da_seg_mask, ll_seg_mask):
-    global prev_mask, prev_magnitudes
     """this is the main function filtering the drivable area (da)
     yolopv2 somtimes gives incomplete multiple and discontinous lines, it also somtimes miscattecgorises the grass on the side of the road as part of the road.
     This function tries to find a good straigth line aproximation for the track limits and then uses this to remove the da outside the lines somewhat like the fill tool in paint.
@@ -493,7 +548,7 @@ def filter_da(da_seg_mask, ll_seg_mask):
 
     # TODO migh be improvments to make by changing data types for the rest of the code from int32 to uint8 depends on cv2 use by other code, uncertain support by cuda and rest of code, might be worth looking into though instead of converting back and fourth every time using cv2
 
-    return da_seg_mask, line_aproximation
+    return ll_seg_mask, da_seg_mask, line_aproximation
 
 
 def debug_image(masks, palette=None, is_demo=False, t=10_000, window="debug"):
