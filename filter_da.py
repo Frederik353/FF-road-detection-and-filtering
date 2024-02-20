@@ -2,6 +2,10 @@ import cv2
 import numpy as np
 
 
+# array holding previous n masks for optical flow
+prev_magnitudes = []
+prev_mask = []
+
 def find_line_intersection(x1, y1, x2, y2, x3, y3, x4, y4):
     # Calculate the coefficients A, B, and C for each line
     A1 = y2 - y1
@@ -137,6 +141,7 @@ def average_line(image, lines, frame):
         x1, y1, x2, y2 = line.reshape(4)
 
         # Calculate slope
+        # todo not suited since simular x
         parameters = np.polyfit((x1, x2), (y1, y2), 1)
         slope = parameters[0]
         y_int = parameters[1]
@@ -212,7 +217,6 @@ def draw_lines(image, lines, width=2):
             cv2.line(lines_image, (x1, y1), (x2, y2), (1, 0, 0), width)
     return lines_image
 
-
 def connect_components(img, max_distance=10):
     """
     This function tries to connect components in a binary image in a given direction with a specified tolerance and maximum distance.
@@ -228,6 +232,7 @@ def connect_components(img, max_distance=10):
     """
     # Find the connected components in the image
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(img, connectivity=8)
+    print("number of components detected: ", num_labels - 1)  # -1 as the first label is the background
 
     # Create a new image for drawing the connections
     connected_img = np.copy(img)
@@ -249,48 +254,128 @@ def connect_components(img, max_distance=10):
 
     return connected_img
 
+""" 
+# def mark_first_white_pixels(img, from_outside=False, connectivity_threshold=2):
+#     Scan from outside or middle and mark the first pixel found, removing the rest.
 
-def mark_first_white_pixels(img, connectivity_threshold=2):
-    """this function scans from middle out to the left and right and mark first  pixel found and remove the rest
+#     Args:
+#         img (numpy.ndarray, dtype, uint8): lane lines mask where 0 means no lane line and 1 means lane line categorized by yolopv2.
+#         from_outside (bool, optional): Whether to scan from outside to middle (True) or from middle out (False). Defaults to True.
+#         connectivity_threshold (int, optional): How many extra pixels to add to the left/right of the first pixel found. Defaults to 2.
+
+#     Returns:
+#         numpy.ndarray, dtype, uint8: Image mask with only the first white pixels found in each row.
+#     
+#     # Create an output image filled with zeros
+#     marked_img = np.zeros_like(img)
+
+#     # Get the middle index
+#     middle = img.shape[1] // 2
+
+#     if from_outside:
+#         # Split the image into left and right halves
+#         left_half = img[:, :middle]
+#         right_half = img[:, middle:][::-1]  # Flip the right half
+
+#         # Find the first white pixel in each row for both halves
+#         left_indices = np.argmax(left_half == 1, axis=1)
+#         right_indices = np.argmax(right_half == 1, axis=1)
+
+#         # Correct indices for right half
+#         right_indices[right_indices > 0] = middle + 1 - right_indices[right_indices > 0]
+#     else:
+#         # Split the image into left and right halves
+#         left_half = img[:, :middle][:, ::-1]  # Flip the left half
+#         right_half = img[:, middle:]
+
+#         # Find the first white pixel in each row for both halves
+#         left_indices = np.argmax(left_half == 1, axis=1)
+#         right_indices = np.argmax(right_half == 1, axis=1)
+
+#         # Correct indices for left half
+#         left_indices[left_indices > 0] = middle - left_indices[left_indices > 0]
+
+#     # Marking the pixels with connectivity threshold
+#     for row in range(img.shape[0]):
+#         if left_indices[row] > 0:
+#             if from_outside:
+#                 end_index = middle - left_indices[row]
+#             else:
+#                 end_index = left_indices[row]
+#             marked_img[row, : end_index - connectivity_threshold] = 1
+
+#         if right_indices[row] > 0:
+#             if from_outside:
+#                 end_index = middle + right_indices[row]
+#             else:
+#                 end_index = right_indices[row] + middle
+#             marked_img[row, end_index + connectivity_threshold :] = 1
+
+#     return marked_img
+
+
+
+"""
+
+
+def mark_first_white_pixels(img, from_outside=False, connectivity_threshold=2):
+    """Scan from outside to middle or middle out and mark the first pixel found, removing the rest.
 
     Args:
-
-        img (numpy.ndarray, dtype, uint8): lane lines mask 0 means no lane line, 1 means lane line categorised by yolopv2
-        connectivity_threshold (int, optional): how many extra pixels to add to the left/right of the first pixel found. Defaults to 2.
+        img (numpy.ndarray, dtype, uint8): lane lines mask where 0 means no lane line and 1 means lane line categorized by yolopv2.
+        from_outside (bool, optional): If True, scan from outside to middle. If False, scan from middle out. Defaults to True.
+        connectivity_threshold (int, optional): How many extra pixels to add to the left/right of the first pixel found. Defaults to 2.
 
     Returns:
-        (numpy.ndarray, dtype, uint8): image mask with only the first white pixels found in each row
+        numpy.ndarray, dtype, uint8: Image mask with only the first white pixels found in each row.
     """
-
     # Create an output image filled with zeros
     marked_img = np.zeros_like(img)
 
     # Get the middle index
     middle = img.shape[1] // 2
 
-    # Split the image into left and right halves
-    left_half = img[:, :middle][:, ::-1]  # Flip the left half
-    right_half = img[:, middle:]
+    if from_outside:
+        # Split the image into left and right halves
+        left_half = img[:, :middle]
+        right_half = img[:, middle:][::-1]  # Flip the right half
 
-    # Find the first white pixel in each row for both halves
-    left_indices = np.argmax(left_half == 1, axis=1)
-    right_indices = np.argmax(right_half == 1, axis=1)
+        # Find the first white pixel in each row for both halves
+        left_indices = np.argmax(left_half == 1, axis=1)
+        right_indices = np.argmax(right_half == 1, axis=1)
 
-    # Correct indices for left half
-    left_indices[left_indices > 0] = middle - left_indices[left_indices > 0]
+        # Correct indices for right half
+        right_indices[right_indices > 0] = middle + 1 - right_indices[right_indices > 0]
+    else:
+        # Split the image into left and right halves
+        left_half = img[:, :middle][:, ::-1]  # Flip the left half
+        right_half = img[:, middle:]
 
-    # Correct indices for right half
-    right_indices[right_indices > 0] += middle
+        # Find the first white pixel in each row for both halves
+        left_indices = np.argmax(left_half == 1, axis=1)
+        right_indices = np.argmax(right_half == 1, axis=1)
+
+        # Correct indices for left half
+        left_indices[left_indices > 0] = middle - left_indices[left_indices > 0]
 
     # Marking the pixels with connectivity threshold
     for row in range(img.shape[0]):
-        if left_indices[row] > 0:
-            start_index = left_indices[row]
-            marked_img[row, start_index - connectivity_threshold : start_index] = 1
+        if from_outside:
+            if left_indices[row] > 0:
+                end_index = middle - left_indices[row]
+                marked_img[row, : end_index - connectivity_threshold] = 1
 
-        if right_indices[row] > 0:
-            start_index = right_indices[row]
-            marked_img[row, start_index : start_index + connectivity_threshold] = 1
+            if right_indices[row] > 0:
+                end_index = middle + right_indices[row]
+                marked_img[row, end_index + connectivity_threshold :] = 1
+        else:
+            if left_indices[row] > 0:
+                start_index = left_indices[row]
+                marked_img[row, start_index - connectivity_threshold : start_index] = 1
+
+            if right_indices[row] > 0:
+                start_index = right_indices[row]
+                marked_img[row, start_index : start_index + connectivity_threshold] = 1
 
     return marked_img
 
@@ -330,6 +415,67 @@ def clamp_lines_inside_frame(left_line, right_line, frame):
     return averaged_lines
 
 
+def calculate_optical_flow(prev, current):
+
+    # Calculate optical flow using Farneback method
+    flow = cv2.calcOpticalFlowFarneback(
+        prev=prev,
+        next=current,
+        flow=None,
+        pyr_scale=0.5,
+        levels=10,
+        winsize=100,
+        iterations=10,
+        poly_n=5,
+        poly_sigma=1.2,
+        flags=0,
+    )
+
+    # Compute magnitude and angle (currently unused) of the flow
+    magnitude, angle = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+
+    # Normalize magnitude for visualization
+    normalized_magnitude = cv2.normalize(magnitude, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+    # Normalize angle (0 to 2*pi) to fit into the Hue channel (0-180)
+    hue = angle * (180 / np.pi) / 2
+
+    # Set saturation to maximum
+    saturation = np.ones_like(magnitude) * 255
+
+    # Normalize magnitude for Value channel
+    value = cv2.normalize(magnitude, None, 0, 255, cv2.NORM_MINMAX)
+
+    # Stack channels to form HSV image, convert types as needed
+    hsv = np.stack([hue, saturation, value], axis=-1).astype(np.uint8)
+
+    # Convert HSV to BGR (or RGB) for visualization
+    flow_bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+    # ------------------------------------------------
+
+    # Create a copy of the current frame for drawing (convert to color if necessary)
+    if len(current.shape) == 2 or current.shape[2] == 1:  # if the image is grayscale
+        frame_with_arrows = cv2.cvtColor(current, cv2.COLOR_GRAY2BGR)
+    else:
+        frame_with_arrows = np.copy(current)
+
+    # Parameters for arrow drawing
+    scale = 0.05  # Scale factor for the length of the arrows
+
+    # Iterate through each pixel
+    for y in range(flow.shape[0]):
+        for x in range(flow.shape[1]):
+            # Determine the end point of the vector
+            if np.sqrt(flow[y, x, 0] ** 2 + flow[y, x, 1] ** 2) < 1:
+                continue
+            end_point = (int(x + flow[y, x, 0] * scale), int(y + flow[y, x, 1] * scale))
+            # Draw the arrow using a line and a circle for the tip
+            cv2.arrowedLine(frame_with_arrows, (x, y), end_point, (0, 255, 0), thickness=1, tipLength=0.3)
+
+    return normalized_magnitude, frame_with_arrows
+
+
 def approximate_lines(ll_seg_mask, frame):
     """this function tries to improve the lane lines and section of the image
 
@@ -343,6 +489,7 @@ def approximate_lines(ll_seg_mask, frame):
     """
 
     """ calculating desired connectivity threshold
+    ct = connectivity_threshold
 
     1 / tan( theta )
 
@@ -352,11 +499,19 @@ def approximate_lines(ll_seg_mask, frame):
     90 deg is vertical, 0 deg is horizontal
     10 deg => 6
     30 deg => 2
+    low ct => connect components will have to do a lot more work depending on how steep the line is.
+    ct = 10 => 25-30 components
+    ct = 1 => 60 - 250 components
+
     """
+
+    # todo althoug a low ct is more accurate as high ct will mess up the lines more if lines cross center e.g. left line cross into right side and blocks right line and left search might find a second line messing up left line too
 
     # scan from middle out to the left and right and mark first  pixel found and remove the rest
     # connectivity_threshold is how many pixels to match on each line
-    removed_outer = mark_first_white_pixels(ll_seg_mask, connectivity_threshold=10)
+    # todo when marking detect if two lines detected, look at size and delete smallest line
+    removed_outer = mark_first_white_pixels(ll_seg_mask, connectivity_threshold=1)
+    debug_image([ll_seg_mask, removed_outer], t=10000)
 
     # tries to connect the lines in the mask, if they are close enough in angle and distance
     # img, pixel_max_distance
@@ -366,9 +521,10 @@ def approximate_lines(ll_seg_mask, frame):
     # a quite high connectivity threshold does not hurt hough line
     removed_outer = mark_first_white_pixels(connected, connectivity_threshold=10)
 
+    # todo try spline interpolation or split and merge line fittng or curve fitting
+    # todo time avg line, look at line movment over time and see if it makes sense for the line to move that much in that time
     # does a houghtransform to find lines in the mask
     # Parameters for cv2.HoughLinesP
-    input_image = removed_outer  # Input image for line detection
     rho = 2  # Distance resolution of the accumulator in pixels
     theta = np.pi / 180  # Angular resolution of the accumulator in radians (1 degree)
     threshold = 100  # Threshold: minimum number of intersections to detect a line
@@ -376,25 +532,37 @@ def approximate_lines(ll_seg_mask, frame):
     max_line_gap = 50  # Maximum gap between points on the same line to link them
 
     # Applying the Hough Line Transform
-    lines = cv2.HoughLinesP(input_image, rho, theta, threshold, minLineLength=min_line_length, maxLineGap=max_line_gap)
-
-    # test = np.empty_like(removed_outer)
-    # for line in lines:
-    #     x1, y1, x2, y2 = line.reshape(4)
-    #     cv2.line(test, (x1, y1), (x2, y2), 1, thickness=1)  # Draw a line to connect the components
-    #     # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
-    #     # parameters = np.polyfit((x1, x2), (y1, y2), 1)
-    #     debug_image([test], t=500)
+    lines = cv2.HoughLinesP(
+        removed_outer, rho, theta, threshold, minLineLength=min_line_length, maxLineGap=max_line_gap
+    )
 
     # might find many lines, take the average of them
     left_line, right_line = average_line(ll_seg_mask, lines, frame)
 
+    test = np.empty_like(removed_outer)
+    for line in lines:
+        x1, y1, x2, y2 = line.reshape(4)
+        cv2.line(test, (x1, y1), (x2, y2), 1, thickness=1)  # Draw a line to connect the components
+        # Fit a linear polynomial to the x and y coordinates and retrieve the slope and y-intercept
+        # parameters = np.polyfit((x1, x2), (y1, y2), 1)
+
+    if left_line is not None:
+        x1, y1, x2, y2 = left_line.reshape(4)
+        cv2.line(test, (x1, y1), (x2, y2), (0, 0, 255), thickness=1)  # Draw a line to connect the components
+    if right_line is not None:
+        x1, y1, x2, y2 = right_line.reshape(4)
+        cv2.line(test, (x1, y1), (x2, y2), (0, 0, 255), thickness=1)  # Draw a line to connect the components
+
+    debug_image([ll_seg_mask, test], t=5000)
+
     # if no line is found we make a educated guess
     # todo find better guess, either by a better avg or by other technique
     if left_line is None:
+        print("no left line found")
         left_line = [0, 406, 1280, 175]
 
     if right_line is None:
+        print("no right line found")
         right_line = [1280, 380, 0, 155]
 
     averaged_lines = [left_line, right_line]
@@ -404,8 +572,13 @@ def approximate_lines(ll_seg_mask, frame):
 
     # draws them onto the image
     road_lines = draw_lines(ll_seg_mask, lines_to_intersection)
-    # debug_image([road_lines], t=10_000)
 
+    # TODO: combine houglines with first pixels
+    # road_lines += removed_outer
+    # road_lines = connect_components(road_lines, 100)
+    # road_lines = mark_first_white_pixels(road_lines, from_outside=True)
+
+    # road_lines = np.zeros_like(road_lines)
     return road_lines
 
 
@@ -437,6 +610,7 @@ def remove_da_outside_lines(da_seg_mask, approximate_lines, frame):
 
 
 def filter_da(da_seg_mask, ll_seg_mask):
+    global prev_mask, prev_magnitudes
     """this is the main function filtering the drivable area (da)
     yolopv2 somtimes gives incomplete multiple and discontinous lines, it also somtimes miscattecgorises the grass on the side of the road as part of the road.
     This function tries to find a good straigth line aproximation for the track limits and then uses this to remove the da outside the lines somewhat like the fill tool in paint.
@@ -462,16 +636,30 @@ def filter_da(da_seg_mask, ll_seg_mask):
     # tries to improve lines and section of the image
     line_aproximation = approximate_lines(ll_seg_mask, frame)
 
+    # optical flow
+    """
+    if len(prev_magnitudes) < 2:
+        average_magnitude = np.zeros_like(line_aproximation)
+        prev_magnitudes.append(average_magnitude)
+    else:
+        magnitudes, vis = calculate_optical_flow(prev_mask, ll_seg_mask)
+        magnitudes = np.array(magnitudes)
+        prev_magnitudes.append(magnitudes)
+        prev_magnitudes = prev_magnitudes[-10:]
+
+        average_magnitude = np.mean(prev_magnitudes)
+        debug_image([ll_seg_mask, prev_mask, vis], t=1000)
+    prev_mask = ll_seg_mask
+    """
+
     # removes the da outside the lines
     da_seg_mask = remove_da_outside_lines(da_seg_mask, line_aproximation, frame)
 
     # TODO migh be improvments to make by changing data types for the rest of the code from int32 to uint8 depends on cv2 use by other code, uncertain support by cuda and rest of code, might be worth looking into though instead of converting back and fourth every time using cv2
 
     # change dtype back to int32 expected by rest of code
-    ll_seg_mask.astype(np.int32)
-    da_seg_mask.astype(np.int32)
 
-    return da_seg_mask, ll_seg_mask, line_aproximation
+    return da_seg_mask, line_aproximation
 
 
 def debug_image(masks, palette=None, is_demo=False, t=10_000, window="debug"):
@@ -490,13 +678,21 @@ def debug_image(masks, palette=None, is_demo=False, t=10_000, window="debug"):
     np_image = np.zeros((masks[0].shape[0], masks[0].shape[1], 3), dtype=np.uint8)
 
     for label, color in enumerate(palette):
-        np_image[masks[label] == 1, :] = color
+        if masks[label].ndim == 2:
+            np_image[masks[label] == 1, :] = color
+        elif masks[label].ndim == 3:
+            mask = np.any(masks[label] > 0, axis=-1)
+            # Convert the mask into a format that can be used for the overlay operation
+            mask_3d = np.stack([mask] * 3, axis=-1)
+
+            # Where mask is True, take pixels from the overlay image; else, take pixels from the background
+            np_image = np.where(mask_3d, masks[label], np_image)
 
     # # If image is boolean, we need to convert to 0s and 255s
     # if np.max(image) == 1:
-    #     np_image = image.astype(np.uint8) * 255
+    # np_image = image.astype(np.uint8) * 255
     # else:
-    #     np_image = image.astype(np.uint8)
+    # np_image = image.astype(np.uint8)
 
     # display over image
     # color_mask = np.mean(color_seg, 2)

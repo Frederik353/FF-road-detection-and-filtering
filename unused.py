@@ -1,4 +1,3 @@
-
 def connect_components_directionally(img, frame, max_distance=10, desired_angle=0, angle_tolerance=10):
     """
     This function tries to connect components in a binary image in a given direction with a specified tolerance and maximum distance. 
@@ -71,8 +70,6 @@ def find_closest_edge_points(component1, component2, labels, desired_angle_rad, 
     return closest_point1, closest_point2, min_distance
 
 
-
-
 # convert into grey scale image
 def grey(image):
     image = np.asarray(image)
@@ -97,7 +94,6 @@ def region(image):
     mask = cv2.fillPoly(mask, triangle, 255)
     mask = cv2.bitwise_and(image, mask)
     return mask
-
 
 
 # Skeletonize the image
@@ -162,3 +158,47 @@ def plot(da_seg_mask, ll_seg_mask, filtered_da):
     plt.tight_layout()
     plt.show()
 
+
+def mark_first_white_pixels(img, connectivity_threshold=2):
+    """this function scans from middle out to the left and right and mark first  pixel found and remove the rest
+
+    Args:
+
+        img (numpy.ndarray, dtype, uint8): lane lines mask 0 means no lane line, 1 means lane line categorised by yolopv2
+        connectivity_threshold (int, optional): how many extra pixels to add to the left/right of the first pixel found. Defaults to 2.
+
+    Returns:
+        (numpy.ndarray, dtype, uint8): image mask with only the first white pixels found in each row
+    """
+
+    # Create an output image filled with zeros
+    marked_img = np.zeros_like(img)
+
+    # Get the middle index
+    middle = img.shape[1] // 2
+
+    # Split the image into left and right halves
+    left_half = img[:, :middle][:, ::-1]  # Flip the left half
+    right_half = img[:, middle:]
+
+    # Find the first white pixel in each row for both halves
+    left_indices = np.argmax(left_half == 1, axis=1)
+    right_indices = np.argmax(right_half == 1, axis=1)
+
+    # Correct indices for left half
+    left_indices[left_indices > 0] = middle - left_indices[left_indices > 0]
+
+    # Correct indices for right half
+    right_indices[right_indices > 0] += middle
+
+    # Marking the pixels with connectivity threshold
+    for row in range(img.shape[0]):
+        if left_indices[row] > 0:
+            start_index = left_indices[row]
+            marked_img[row, start_index - connectivity_threshold : start_index] = 1
+
+        if right_indices[row] > 0:
+            start_index = right_indices[row]
+            marked_img[row, start_index : start_index + connectivity_threshold] = 1
+
+    return marked_img

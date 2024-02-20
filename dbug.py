@@ -11,19 +11,21 @@ from filter_da import filter_da
 
 
 class debug_filter_da:
-    image_range = (1, 400)
+    image_range = (30, 36)
+    # 30 missing left
+    # 35 crossing center
 
     save_result = False
     save_folder = "final_images"
     # BGR colors for each mask
     colors = [
-        (237, 193, 105, 255),
+        (150, 130, 70, 255),
+        (100, 251, 100, 255),
+        (0, 0, 255, 255),
         (255, 255, 255, 255),
-        (157, 251, 177, 255),
-        (155, 155, 155, 255),
     ]  # BGR format !!!not RGB!!!
 
-    wait_time = 5000  # ms between showing images
+    wait_time = 500  # ms between showing images
 
     processed_masks = []
 
