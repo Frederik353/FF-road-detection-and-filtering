@@ -459,3 +459,23 @@ def clamp_line_inside_frame(line, frame):
     # todo change to left right line same for line intersection for consitency
     averaged_lines = [left_line, right_line]
     return averaged_lines
+
+
+
+def clamp_point_to_image(x, y, image_width, image_height):
+    """
+    Clamp a point to be within the boundaries of an image.
+
+    Parameters:
+    x (int): The x-coordinate of the point.
+    y (int): The y-coordinate of the point.
+    image_width (int): The width of the image.
+    image_height (int): The height of the image.
+
+    Returns:
+    tuple: A tuple (x, y) where the point coordinates are clamped within the image dimensions.
+    """
+    x_clamped = max(0, min(x, image_width - 1))
+    y_clamped = max(0, min(y, image_height - 1))
+    return (x_clamped, y_clamped)
+

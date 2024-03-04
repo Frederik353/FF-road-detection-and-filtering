@@ -21,6 +21,5 @@ ALPHA = 0.0
 RIGHT_FALLBACK_LINE = (0.17578125, 155)
 LEFT_FALLBACK_LINE = (-0.18046875, 406)
 
-
 # connect components max distance
 CC_MAX_DISTANCE = 100

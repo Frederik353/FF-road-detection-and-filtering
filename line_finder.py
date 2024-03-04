@@ -8,7 +8,7 @@ def sort_lines_LR(lines, frame):
     left, right = [], []
 
     # Define the midpoint in the x-direction
-    mid_x = frame[1] // 2
+    mid_x = frame[2] // 2
 
     # Process each line to sort by side and then by correct slope direction
     # todo necessary?
@@ -198,7 +198,7 @@ def lines_to_intersection(left_line, right_line, frame):
     right_line = utils.sort_line_bottom_first(right_line)
 
     # todo fix fucked frame and interface
-    if utils.is_point_in_frame(intersection, 0, 0, *frame[::-1]):
+    if utils.is_point_in_frame(intersection, frame):
         left_line = np.concatenate([left_line[:2], intersection])
         right_line = np.concatenate([right_line[:2], intersection])
     else:

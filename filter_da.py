@@ -1,11 +1,10 @@
 import cv2
 import numpy as np
+
 import utils
 import line_time_averaging
-
 import line_finder
 
-# todo add type hints
 
 def draw_lines(image, lines, width=2):
     """draws lines onto an image/ mask
@@ -40,7 +39,7 @@ def remove_da_outside_lines(da_seg_mask, approximate_lines, frame):
     """
 
     # flood fill begins at the seed_point wich is in the bottom middle of Image
-    seed_point = (frame[1] // 2, frame[0] - 10)
+    seed_point = (frame[2] // 2, frame[3] - 10)
 
     # Flood fill
     floodfill_color = 255  # white color for flood fill
@@ -69,7 +68,8 @@ def filter_da(da_seg_mask, ll_seg_mask):
 
     # Frame  (ymax, xmax)
     # todo remove frame and use np.shape instead or use frame and change from (y,x) to (x,y) for more consistent and easier to understand code
-    frame = da_seg_mask.shape
+    height, width = da_seg_mask.shape
+    frame = [0, 0, width - 1, height - 1]
 
     # change dtype to uint8 expected by cv2
     ll_seg_mask = ll_seg_mask.astype(np.uint8)
