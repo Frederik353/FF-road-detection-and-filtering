@@ -68,7 +68,7 @@ def compute_intersection(x1, y1, x2, y2, x3, y3, x4, y4):
     # Calculate the coefficients for the equations of the lines
     den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
 
-    # If den is zero, lines are parallel and have no intersection within any frame
+    # If den is zero, lines are parallel and have no intersection
     if den == 0:
         return None
 
@@ -196,7 +196,6 @@ def connect_components_directionally(img, frame, max_distance=10, desired_angle=
     return connected_img
 
 
-
 def find_closest_edge_points(component1, component2, labels, desired_angle_rad, angle_tolerance_rad, frame):
     # Extract the edge points for each component
     edge_points1 = np.argwhere(labels == component1)
@@ -228,7 +227,6 @@ def find_closest_edge_points(component1, component2, labels, desired_angle_rad, 
                     closest_point2 = pt2
 
     return closest_point1, closest_point2, min_distance
-
 
 
 def filter_da(da_seg_mask, ll_seg_mask):

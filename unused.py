@@ -364,3 +364,98 @@ def raytrace_from_point(mask, start, angular_resolution=1):
     debug_image([marked], t=10_000)
     return marked
 
+
+def average_lines(image, lines, frame):
+    """
+    Calculate the average left and right lines for a given set of lines on an image.
+
+    This function processes a list of lines (each defined by two points) and classifies them
+    as either part of the left or right side based on their slope. It then calculates the
+    average slope and y-intercept for the lines on each side and uses these averages to
+    create two average lines, one for the left and one for the right.
+
+    Parameters:
+    image (ndarray): The image where the lines are found. Used for determining the length and position of the average lines.
+    lines (list of ndarray): A list of lines, where each line is represented by an ndarray of four integers [x1, y1, x2, y2].
+
+    Returns:
+    ndarray: A numpy array containing two lines (each an array of four integers), representing the average left and right lines.
+    """
+
+    # todo debug and reread this function, super tired now
+
+    left, right = [], []
+
+    # Define the midpoint in the x-direction
+    # Assuming 'frame' is a tuple or list with (height, width), hence frame[1] is the width
+    mid_x = frame[1] // 2
+
+    # Process each line to sort by side and then by correct slope direction
+    for line in lines:
+        x1, y1, x2, y2 = line.reshape(4)
+
+        # Calculate slope
+        # todo not suited since simular x
+        parameters = np.polyfit((x1, x2), (y1, y2), 1)
+        slope = parameters[0]
+        y_int = parameters[1]
+
+        # Check if line is on the left side of the screen
+        if x1 < mid_x and x2 < mid_x:
+            # Further check if the slope is negative (expected direction for left)
+            if slope < 0:
+                left.append((slope, y_int))
+        # Check if line is on the right side of the screen
+        elif x1 >= mid_x and x2 >= mid_x:
+            # Further check if the slope is positive (expected direction for right)
+            if slope > 0:
+                right.append((slope, y_int))
+
+    # Calculate the average slope and y-intercept for both the left and right lines
+    right_avg = np.average(right, axis=0) if right else np.nan
+    left_avg = np.average(left, axis=0) if left else np.nan
+
+    # Generate the average left and right lines using the calculated averages, or default to a zero line if no average was found
+    left_line = make_line_points(image, left_avg, frame) if not np.isnan(left_avg).any() else None
+    right_line = make_line_points(image, right_avg, frame) if not np.isnan(right_avg).any() else None
+
+    return left_line, right_line
+
+def clamp_line_inside_frame(line, frame):
+    # will get int overflow if not kept within image frame
+    top_border_line = (0, 0, frame[1], 0)
+    bottom_border_line = (0, frame[0], frame[1], frame[0])
+    left_border_line = (0, 0, 0, frame[0])
+    right_border_line = (frame[1], 0, frame[1], frame[0])
+
+    # assuming slope not steep so likly to cross left and right as opposed to top and bottom
+
+    # left top point avg
+    if left_line is not None:
+        left_p1 = utils.find_line_intersection(*left_line, *right_border_line)
+        if not utils.is_point_in_frame(*left_p1, 0, 0, *frame[::-1]):
+            left_p1 = utils.find_line_intersection(*left_line, *top_border_line)
+
+        # left bottom point avg
+        left_p2 = utils.find_line_intersection(*left_line, *left_border_line)
+        if not utils.is_point_in_frame(*left_p2, 0, 0, *frame[::-1]):
+            left_p2 = utils.find_line_intersection(*left_line, *bottom_border_line)
+
+        left_line = [*left_p2, *left_p1]
+
+    # right top point avg
+    if right_line is not None:
+        right_p1 = utils.find_line_intersection(*right_line, *left_border_line)
+        if not utils.is_point_in_frame(*right_p1, 0, 0, *frame[::-1]):
+            right_p1 = utils.find_line_intersection(*right_line, *top_border_line)
+
+        # right bottom point avg
+        right_p2 = utils.find_line_intersection(*right_line, *right_border_line)
+        if not utils.is_point_in_frame(*right_p2, 0, 0, *frame[::-1]):
+            right_p2 = utils.find_line_intersection(*right_line, *bottom_border_line)
+
+        right_line = [*right_p2, *right_p1]
+
+    # todo change to left right line same for line intersection for consitency
+    averaged_lines = [left_line, right_line]
+    return averaged_lines

@@ -11,9 +11,12 @@ from filter_da import filter_da
 
 
 class debug_filter_da:
-    image_range = (0, 36)
+    image_range = (0, 25)
+    # image_range = (0, 357)
+    wait_time = 1  # ms between showing images
     # 30 missing left
     # 35 crossing center
+    # 123 intersection error
 
     save_result = False
     save_folder = "final_images"
@@ -24,8 +27,6 @@ class debug_filter_da:
         (0, 0, 255, 255),
         (255, 255, 255, 255),
     ]  # BGR format !!!not RGB!!!
-
-    wait_time = 500  # ms between showing images
 
     processed_masks = []
 
@@ -48,7 +49,7 @@ class debug_filter_da:
                 print(f"Elapsed time: {start_time - end_time} seconds")
 
                 image = self.combine_masks(masks)
-                self.display_image(image)
+                self.display_image(image, i)
                 print("image", image.dtype, image.shape)
 
                 if self.save_result:
@@ -61,7 +62,7 @@ class debug_filter_da:
         print("----------------------------------------")
         print(f"average time: {np.average(time_arr)}")
         print(f"median time: {np.median(time_arr)}")
-        print(time_arr)
+        # print(time_arr)
 
     def combine_masks(self, masks):
         if len(masks) == 1:
@@ -79,13 +80,24 @@ class debug_filter_da:
 
         return overlay
 
-    def display_image(self, image, window_name="Images"):
+    def display_image(self, image, iteration, window_name="Images"):
         """show an image
 
         Args:
             image (np.array): image to show
             window_name (str, optional): name of window to show image in. Defaults to "Images".
         """
+        # Text settings
+        position = (50, 50)  # Text start position (x, y)
+        font = cv2.FONT_HERSHEY_SIMPLEX  # Font type
+        fontScale = 1  # Font size
+        color = (255, 0, 0)  # Text color in BGR (blue, green, red)
+        thickness = 2  # Text line thickness
+        lineType = cv2.LINE_AA  # Line type
+
+        # Write text on the image
+        text = str(iteration)
+        cv2.putText(image, text, position, font, fontScale, color, thickness, lineType)
 
         cv2.imshow(window_name, image)
         cv2.waitKey(self.wait_time)
@@ -137,30 +149,29 @@ def debug_image(masks, palette=None, is_demo=False, t=10_000, window="debug"):
     np_image = np.zeros((masks[0].shape[0], masks[0].shape[1], 3), dtype=np.uint8)
 
     for label, color in enumerate(palette):
-        np_image[masks[label] == 1, :] = color
+        if masks[label].ndim == 2:
+            np_image[masks[label] == 1, :] = color
+        elif masks[label].ndim == 3:
+            mask = np.any(masks[label] > 0, axis=-1)
+            # Convert the mask into a format that can be used for the overlay operation
+            mask_3d = np.stack([mask] * 3, axis=-1)
+
+            # Where mask is True, take pixels from the overlay image; else, take pixels from the background
+            np_image = np.where(mask_3d, masks[label], np_image)
 
     # # If image is boolean, we need to convert to 0s and 255s
     # if np.max(image) == 1:
-    #     np_image = image.astype(np.uint8) * 255
+    # np_image = image.astype(np.uint8) * 255
     # else:
-    #     np_image = image.astype(np.uint8)
+    # np_image = image.astype(np.uint8)
 
     # display over image
     # color_mask = np.mean(color_seg, 2)
     # img[color_mask != 0] = img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
 
-    print("showing debug image")
     cv2.imshow(window, np_image)
     cv2.waitKey(t)  # Display the image for 10 seconds
     # cv2.destroyAllWindows()
-
-    # test_image = np.zeros_like(ll_seg_mask)
-    # for line in averaged_lines+averaged_lines2:
-    #     x1, y1, x2, y2 = line  # hvis input averaged lines
-    #     cv2.line(test_image, (x1, y1), (x2, y2), (1, 0, 0), 1)
-    # debug_image([test_image])
-
-    # print("lines", averaged_lines)
 
 
 def generate_distinct_colors(n):
