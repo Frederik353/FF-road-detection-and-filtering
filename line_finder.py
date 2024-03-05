@@ -2,106 +2,174 @@ import numpy as np
 import cv2
 import utils
 import constants
+from typing import List, Tuple, Optional
 
 
-def sort_lines_LR(lines, frame):
+def sort_lines_LR(
+    lines: Optional[List[np.ndarray]], frame: Tuple[int, int]
+) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]:
+    """
+    Sorts lines into left and right groups based on their position and slope.
+
+    Args:
+        lines (Optional[List[np.ndarray]]): A list of line coordinates.
+        frame (Tuple[int, int]): The dimensions of the frame (width, height).
+
+    Returns:
+        Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]: Two lists containing the slope and y-intercept
+                                                                      of the left and right lines, respectively.
+    """
     left, right = [], []
 
     # Define the midpoint in the x-direction
     mid_x = frame[2] // 2
 
-    # Process each line to sort by side and then by correct slope direction
-    # todo necessary?
+    # Return empty lists if no lines are provided
     if lines is None:
-        return None, None
+        return left, right
 
     for line in lines:
         x1, y1, x2, y2 = line.reshape(4)
+        # Calculate the slope and y-intercept of the line
         parameters = np.polyfit((x1, x2), (y1, y2), 1)
         slope = parameters[0]
         y_int = parameters[1]
 
+        # Assign lines to the left group if they are on the left side and have a negative slope
         if x1 < mid_x and x2 < mid_x and slope < 0:
             left.append((slope, y_int))
+        # Assign lines to the right group if they are on the right side and have a positive slope
         elif x1 >= mid_x and x2 >= mid_x and slope > 0:
             right.append((slope, y_int))
+
     return left, right
 
 
-def mark_first_white_pixels(img, connectivity_threshold=2):
+# todo is connectivity threshold needed?
+
+# new
+# average time: -0.05599002288968376
+# median time: -0.050994157791137695
+
+
+def mark_first_white_pixels(img: np.ndarray, connectivity_threshold: int = 2) -> np.ndarray:
     """
-    this function scans from middle out to the left and right and mark first  pixel found and remove the rest
+    Marks the first white pixel found in each row for the left and right halves of the image and from bottom up vertically.
 
     Args:
-
-        img (numpy.ndarray, dtype, uint8): lane lines mask 0 means no lane line, 1 means lane line categorised by yolopv2
-        connectivity_threshold (int, optional): how many extra pixels to add to the left/right of the first pixel found. Defaults to 2.
+        img (np.ndarray): The input binary image (0s and 1s) to process.
+        connectivity_threshold (int): The number of pixels to mark around the first white pixel found.
 
     Returns:
-        (numpy.ndarray, dtype, uint8): image mask with only the first white pixels found in each row
+        np.ndarray: An image with the first white pixels marked in each row and column.
     """
 
     # Create an output image filled with zeros
     marked_img = np.zeros_like(img)
 
-    # Get the middle index
+    # Get the middle index to divide the image into left and right halves
     middle = img.shape[1] // 2
 
     # Split the image into left and right halves
-    left_half = img[:, :middle][:, ::-1]  # Flip the left half
+    left_half = img[:, :middle][:, ::-1]  # Flip the left half for easier processing
     right_half = img[:, middle:]
-    flipped = img[::-1]
 
     # Find the first white pixel in each row for both halves
     left_indices = np.argmax(left_half == 1, axis=1)
     right_indices = np.argmax(right_half == 1, axis=1)
-    bottom_indices = np.argmax(flipped == 1, axis=0)
 
-    # Correct indices for left half
+    # Correct indices for the left half
     left_indices[left_indices > 0] = middle - left_indices[left_indices > 0]
 
-    # Correct indices for right half
+    # Correct indices for the right half
     right_indices[right_indices > 0] += middle
 
-    # correct coordinate to top down
-    bottom_indices[bottom_indices > 0] -= img.shape[0]
-
-    # todo is connectivity threshold needed?
-    # Marking the pixels with connectivity threshold
-    # Scan from middle out
+    # Marking the pixels based on the connectivity threshold
     for row in range(img.shape[0]):
         if left_indices[row] > 0:
             start_index = left_indices[row]
-            marked_img[row, start_index - connectivity_threshold : start_index] = 1
+            marked_img[row, max(0, start_index - connectivity_threshold) : start_index] = 1
 
         if right_indices[row] > 0:
             start_index = right_indices[row]
-            marked_img[row, start_index : start_index + connectivity_threshold] = 1
+            marked_img[row, start_index : min(start_index + connectivity_threshold, img.shape[1])] = 1
 
-    # Scan from bottom up for vertical scan
+    # Scan from bottom up for each column to mark the first white pixel found
     for col in range(img.shape[1]):
         # Find the bottom-most white pixel in the column
         col_pixels = img[:, col]
         non_zero_indices = np.nonzero(col_pixels)[0]
         if non_zero_indices.size > 0:
             bottom_most_index = non_zero_indices[-1]  # Take the last non-zero index
-            # Mark the pixels with connectivity threshold for vertical scan
+            # Mark the pixels with the connectivity threshold for vertical scanning
             marked_img[max(0, bottom_most_index - connectivity_threshold) : bottom_most_index + 1, col] = 1
 
     return marked_img
 
 
-def filter_lines(ll_seg_mask, frame):
-    global line_buffer
-    """this function tries to improve the lane lines and section of the image
+# def mark_first_white_pixels(img: np.ndarray, ct) -> np.ndarray:
+#     """
+#     Marks the first white pixel found in each row for the left and right halves of the image and from bottom up vertically.
+
+#     Args:
+#         img (np.ndarray): The input binary image (0s and 1s) to process.
+
+#     Returns:
+#         np.ndarray: An image with the first white pixels marked in each row and column.
+#     """
+
+#     # Create an output image filled with zeros
+#     marked_img = np.zeros_like(img)
+
+#     # Get the middle index to divide the image into left and right halves
+#     middle = img.shape[1] // 2
+
+#     # Split the image into left and right halves
+#     left_half = img[:, :middle][:, ::-1]  # Flip the left half for easier processing
+#     right_half = img[:, middle:]
+
+#     # Find the first white pixel in each row for both halves
+#     left_indices = np.argmax(left_half == 1, axis=1)
+#     right_indices = np.argmax(right_half == 1, axis=1)
+
+#     # Mark the first white pixel for the left half, if it exists
+#     for row, col in enumerate(middle - left_indices):
+#         if left_half[row, middle - col - 1] == 1:
+#             marked_img[row, col] = 1
+
+#     # Mark the first white pixel for the right half, if it exists
+#     for row, col in enumerate(right_indices + middle):
+#         if right_half[row, col - middle] == 1:
+#             marked_img[row, col] = 1
+
+#     # Scan from bottom up for each column to mark the first white pixel found
+#     for col in range(img.shape[1]):
+#         # Find the bottom-most white pixel in the column
+#         col_pixels = img[:, col]
+#         non_zero_indices = np.nonzero(col_pixels)[0]
+#         if non_zero_indices.size > 0:
+#             bottom_most_index = non_zero_indices[-1]  # Take the last non-zero index
+#             # Mark the pixel
+#             marked_img[bottom_most_index, col] = 1
+
+#     return marked_img
+
+
+# todo althoug a low ct is more accurate as high ct will mess up the lines more if lines cross center e.g. left line cross into right side and blocks right line and left search might find a second line messing up left line too
+# todo try spline interpolation or split and merge line fittng or curve fitting
+
+
+def filter_lines(ll_seg_mask: np.ndarray, frame: Tuple[int, int]) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Processes the lane lines mask to improve detection and identify the primary left and right lane lines.
 
     Args:
-        ll_seg_mask (numpy.ndarray, dtype, uint8): lane lines mask 0 means no lane line, 1 means lane line categorised by yolopv2
-        expected shape: (720, 1280)  "720p"
-        frame (tuple): shape of image
+        ll_seg_mask (np.ndarray): A binary mask where 1 indicates a detected lane line, and 0 indicates no lane line.
+        frame (Tuple[int, int]): The dimensions (height, width) of the input image.
 
     Returns:
-        (numpy.ndarray, dtype, uint8): corrected_da_mask
+        Tuple[np.ndarray, np.ndarray]: A tuple containing the median lines for the left and right lanes, represented
+                                       as (slope, y-intercept).
     """
 
     """ calculating desired connectivity threshold
@@ -121,25 +189,21 @@ def filter_lines(ll_seg_mask, frame):
 
     """
 
-    # todo althoug a low ct is more accurate as high ct will mess up the lines more if lines cross center e.g. left line cross into right side and blocks right line and left search might find a second line messing up left line too
+    # todo is ct necessary with new scan method
+    # Define the connectivity threshold for marking white pixels
 
-    # scan from middle out to the left and right and mark first  pixel found and remove the rest
-    # connectivity_threshold is how many pixels to match on each line
-    # todo when marking detect if two lines detected, look at size and delete smallest line
-    removed_outer = mark_first_white_pixels(ll_seg_mask, connectivity_threshold=1)
+    connectivity_threshold = 1
 
-    # tries to connect the lines in the mask, if they are close enough in angle and distance
-    # img, pixel_max_distance
+    # Mark the first white pixel from the middle outwards and remove the rest, applying the connectivity threshold
+    removed_outer = mark_first_white_pixels(ll_seg_mask, connectivity_threshold)
+
+    # Connect nearby components based on a maximum distance
     connected = utils.connect_components(removed_outer, max_distance=constants.CC_MAX_DISTANCE)
 
-    # same process as before but with the connected lines
-    # a quite high connectivity threshold does not hurt hough line
-    removed_outer = mark_first_white_pixels(connected, connectivity_threshold=1)
+    # Repeat the process of marking first white pixels with the connected components
+    removed_outer = mark_first_white_pixels(connected, connectivity_threshold)
 
-    # todo try spline interpolation or split and merge line fittng or curve fitting
-    # todo time avg line, look at line movment over time and see if it makes sense for the line to move that much in that time
-    # does a houghtransform to find lines in the mask
-    # Applying the Hough Line Transform
+    # Apply Hough Line Transform to find lines in the mask
     lines = cv2.HoughLinesP(
         removed_outer,
         constants.RHO,
@@ -149,59 +213,130 @@ def filter_lines(ll_seg_mask, frame):
         maxLineGap=constants.MAX_LINE_GAP,
     )
 
-    # might find many lines, take the average of them
-    # left_line, right_line = average_lines(ll_seg_mask, lines, frame)
+    # Sort the detected lines into left and right based on their slope and position
     left_lines, right_lines = sort_lines_LR(lines, frame)
 
-    # if no line is found we try to make an educated guess
+    # Provide fallback lines if no lines were detected
     if not left_lines:
-        print("no left lines found")
         left_lines.append(constants.LEFT_FALLBACK_LINE)
     if not right_lines:
-        print("no right lines found")
         right_lines.append(constants.RIGHT_FALLBACK_LINE)
 
-    # Calculate the median slope and y-intercept for both the left and right lines
-    left_line = np.median(left_lines, axis=0) if left_lines else np.nan
-    right_line = np.median(right_lines, axis=0) if right_lines else np.nan
-
-    # TODO: combine houglines with first pixels ?
+    # Calculate the median line parameters (slope, y-intercept) for left and right lines
+    left_line = np.median(left_lines, axis=0) if left_lines else np.array([np.nan, np.nan])
+    right_line = np.median(right_lines, axis=0) if right_lines else np.array([np.nan, np.nan])
 
     return left_line, right_line
 
 
-def lines_to_intersection(left_line, right_line, frame):
+# todo splitt up
+def lines_to_intersection(
+    left_line: Tuple[float, float], right_line: Tuple[float, float], frame: Tuple[int, int]
+) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Calculate the intersection points of two lines within a given frame.
-
-    This function takes two lines and a frame (defined by its width and height), and calculates the
-    intersection point of these lines. If the intersection point is within the frame, the function
-    returns new lines that extend from the original line start points to the intersection point.
-    If there is no intersection or the intersection point is outside the frame, the original lines
-    are returned.
+    Adjusts two lines to intersect within a given frame, if their intersection point lies inside the frame.
 
     Parameters:
-    lines (list of lists): A list containing two lines, where each line is represented by a list of four integers [x1, y1, x2, y2].
-    frame (tuple): A tuple of two integers representing the width and height of the frame.
+    - left_line (Tuple[float, float]): The slope and y-intercept of the left line.
+    - right_line (Tuple[float, float]): The slope and y-intercept of the right line.
+    - frame (Tuple[int, int]): The dimensions (width, height) of the frame.
 
     Returns:
-    list of lists: A list containing two lines (each a list of four integers). If an intersection within the frame is found,
-                   these lines extend to the intersection point. Otherwise, the original lines are returned.
+    - Tuple[np.ndarray, np.ndarray]: Two adjusted lines represented by their endpoints. If the intersection is inside the frame,
+      lines are adjusted to meet at the intersection point. Otherwise, the lines are returned without modification.
     """
-
+    # Assuming utils.line_intersection_slope_y_intercept calculates the intersection of two lines
     intersection = utils.line_intersection_slope_y_intercept(left_line, right_line)
 
-    left_line = utils.make_line_points(left_line, frame)
-    right_line = utils.make_line_points(right_line, frame)
+    # Assuming utils.make_line_points converts line representations from slope and intercept to endpoint coordinates
+    left_line_points = utils.make_line_points(left_line, frame)
+    right_line_points = utils.make_line_points(right_line, frame)
 
-    left_line = utils.sort_line_bottom_first(left_line)
-    right_line = utils.sort_line_bottom_first(right_line)
+    # Assuming utils.sort_line_bottom_first ensures the line points are ordered from bottom to top
+    left_line_sorted = utils.sort_line_bottom_first(left_line_points)
+    right_line_sorted = utils.sort_line_bottom_first(right_line_points)
 
-    # todo fix fucked frame and interface
-    if utils.is_point_in_frame(intersection, frame):
-        left_line = np.concatenate([left_line[:2], intersection])
-        right_line = np.concatenate([right_line[:2], intersection])
+    # left_line = utils.clamp_line_inside_frame(left_line_sorted, frame)
+    # right_line = utils.clamp_line_inside_frame(right_line_sorted, frame)
+
+    # Check if the intersection point is within the frame and adjust the lines if it is
+    if intersection is not None and utils.is_point_in_frame(intersection, frame):
+        # Adjust the lines to end at the intersection point
+        left_line_adjusted = np.concatenate([left_line_sorted[:2], intersection])
+        right_line_adjusted = np.concatenate([right_line_sorted[:2], intersection])
     else:
-        print("intersection outside frame")
+        # No valid intersection within the frame, return the original lines
+        left_line_adjusted = left_line_sorted
+        right_line_adjusted = right_line_sorted
 
-    return left_line, right_line
+    print(left_line_adjusted, right_line_adjusted)
+    return left_line_adjusted, right_line_adjusted
+
+
+# ------------------------------------------------------------
+
+
+def debug_image(masks, palette=None, is_demo=False, t=10_000, window="debug"):
+    """show an image
+    Args:
+        image (_type_): image to show
+        t (int): time to show image in ms
+    """
+    # if not given define
+    if palette == None:
+        palette = generate_distinct_colors(len(masks))
+    else:
+        # if colors are given make sure you have enough for every mask
+        assert len(palette) == len(masks)
+
+    np_image = np.zeros((masks[0].shape[0], masks[0].shape[1], 3), dtype=np.uint8)
+
+    for label, color in enumerate(palette):
+        if masks[label].ndim == 2:
+            np_image[masks[label] == 1, :] = color
+        elif masks[label].ndim == 3:
+            mask = np.any(masks[label] > 0, axis=-1)
+            # Convert the mask into a format that can be used for the overlay operation
+            mask_3d = np.stack([mask] * 3, axis=-1)
+
+            # Where mask is True, take pixels from the overlay image; else, take pixels from the background
+            np_image = np.where(mask_3d, masks[label], np_image)
+
+    # # If image is boolean, we need to convert to 0s and 255s
+    # if np.max(image) == 1:
+    # np_image = image.astype(np.uint8) * 255
+    # else:
+    # np_image = image.astype(np.uint8)
+
+    # display over image
+    # color_mask = np.mean(color_seg, 2)
+    # img[color_mask != 0] = img[color_mask != 0] * 0.5 + color_seg[color_mask != 0] * 0.5
+
+    cv2.imshow(window, np_image)
+    cv2.waitKey(t)  # Display the image for 10 seconds
+    # cv2.destroyAllWindows()
+
+
+def generate_distinct_colors(n):
+    """
+    Generate a list of n distinct colors.
+
+    This function generates distinct colors by evenly sampling
+    the hue component in the HSV color space and then converting
+    them to the RGB color space.
+
+    Args:
+    n (int): The number of distinct colors to generate.
+
+    Returns:
+    np.array: A list of RGB colors, each represented as a tuple of three integers.
+    """
+
+    # Generate colors in HSV space. HSV is used because varying the hue
+    # with a fixed saturation and value gives good color diversity.
+    # OpenCV's Hue range is from 0-180 (instead of 0-360), hence the scaling.
+    hsv_colors = [(i * 180 / n, 255, 255) for i in range(n)]
+
+    # Convert HSV colors to RGB
+    rgb_colors = np.array([cv2.cvtColor(np.uint8([[hsv]]), cv2.COLOR_HSV2RGB)[0][0] for hsv in hsv_colors])
+    return rgb_colors

@@ -17,7 +17,7 @@ def find_line_intersection(
 
     Returns:
     Optional[Tuple[int, int]]: The x and y coordinates of the intersection point, rounded to the nearest integer.
-                                Returns None if the lines are parallel or coincident (no unique intersection point).
+                                Returns None if the lines are nearly parallel or coincident (no unique intersection point).
 
     Example:
     >>> find_line_intersection((1, 2, 3, 4), (4, 3, 2, 1))
@@ -29,9 +29,9 @@ def find_line_intersection(
     x3, y3, x4, y4 = line2
 
     # Compute the coefficients A, B, and C for the first line using the formula: Ax + By = C
-    A1 = y2 - y1  # Change in y (delta y)
-    B1 = x1 - x2  # Change in x (delta x), negated
-    C1 = A1 * x1 + B1 * y1  # Compute C using one of the points
+    A1 = y2 - y1
+    B1 = x1 - x2
+    C1 = A1 * x1 + B1 * y1
 
     # Compute the coefficients for the second line
     A2 = y4 - y3
@@ -42,9 +42,10 @@ def find_line_intersection(
     matrix = np.array([[A1, B1], [A2, B2]], dtype=np.float64)
     constants = np.array([C1, C2], dtype=np.float64)
 
-    # Determine if the lines are parallel by checking if the determinant of the matrix is zero
-    if np.linalg.det(matrix) == 0:
-        return None  # The lines are parallel or coincident, no unique intersection
+    # Determine if the lines are nearly parallel by checking if the determinant of the matrix is close to zero
+    determinant = np.linalg.det(matrix)
+    if np.abs(determinant) < 1e-10:  # Threshold for considering lines as parallel
+        return None  # The lines are nearly parallel or coincident, no unique intersection
 
     # Solve the system of equations to find the intersection point
     intersection = np.linalg.solve(matrix, constants)
@@ -149,36 +150,60 @@ def connect_components(img: np.ndarray, max_distance: int = 10) -> np.ndarray:
 
     return connected_img
 
-
 def make_line_points(SI_line, frame):
-    """
-    Calculate two points that define a line on an image.
+    # Starting and ending x values
+    m, b = SI_line
+    x1, _, x2, _ = frame
+    x_min, y_min, x_max, y_max = frame
 
-    This function takes an image and a tuple representing the average (slope and y-intercept)
-    of a set of lines. It calculates and returns two points (x1, y1) and (x2, y2) that define
-    a line within the image. The line is determined algebraically using the slope and y-intercept,
-    and is designed to be a specific length relative to the size of the image.
+    # Calculate corresponding y values
+    y1 = m * x1 + b
+    y2 = m * x2 + b
 
-    Parameters:
-    image (ndarray): The image on which the line will be drawn. This is used to determine the size of the image.
-    average (tuple): A tuple of two elements (slope, y_int) representing the average slope and y-intercept of a set of lines.
-    frame (xmin, ymin, xmax, ymax): clamp points to be within the image frame
+    # Check if y values are within the frame, adjust if necessary
+    if y1 < 0:
+        y1 = 0
+        x1 = (y1 - b) / m
+    elif y1 > y_max:
+        y1 = y_max
+        x1 = (y1 - b) / m
 
-    Returns:
-    ndarray: A numpy array of four integers [x1, y1, x2, y2] representing two points that define a line within the image.
-    """
-    slope, y_intersect = SI_line
-    y1 = frame[3]
-    y2 = int(y1 * 0)
-    x1 = int((y1 - y_intersect) // slope)
-    x2 = int((y2 - y_intersect) // slope)
+    if y2 < 0:
+        y2 = 0
+        x2 = (y2 - b) / m
+    elif y2 > y_max:
+        y2 = y_max
+        x2 = (y2 - b) / m
 
-    return np.array([x1, y1, x2, y2])
+    return np.array([int(x1), int(y1), int(x2), int(y2)])
+
+
+# def make_line_points(SI_line: Tuple[float, float], frame: Tuple[int, int, int, int]) -> np.ndarray:
+#     """
+#     Calculate two points that define a line within a frame based on its slope and y-intercept.
+
+#     Parameters:
+#     - SI_line (Tuple[float, float]): A tuple containing the slope and y-intercept of the line.
+#     - frame (Tuple[int, int, int, int]): A tuple defining the frame within which the line is calculated,
+#       specified as (xmin, ymin, xmax, ymax).
+
+#     Returns:
+#     - np.ndarray: An array containing the coordinates of the two endpoints [x1, y1, x2, y2].
+#     """
+
+#     slope, y_intersect = SI_line
+#     y1 = frame[3]
+#     y2 = int(y1 * 0)
+#     x1 = int((y1 - y_intersect) // slope)
+#     x2 = int((y2 - y_intersect) // slope)
+
+#     print(x1, y1, x2, y2)
+#     return np.array([x1, y1, x2, y2])
 
 
 def clamp_line_inside_frame(
     line: Tuple[int, int, int, int], frame: Tuple[int, int, int, int]
-) -> Tuple[int, int, int, int]:
+) -> Optional[Tuple[int, int, int, int]]:
     """
     Adjusts a line to ensure its endpoints are within a specified rectangular frame by finding the line's intersections
     with the frame's borders and selecting valid intersection points.
@@ -210,6 +235,29 @@ def clamp_line_inside_frame(
 
     # Handle cases where the line doesn't intersect with two borders
     if len(points) < 2:
-        raise ValueError("The line does not intersect the frame in two distinct points.")
+        # raise ValueError("The line does not intersect the frame in two distinct points.")
+        # clamp_point_to_frame(points[0], frame)
+        return None
 
     return [*points[0], *points[1]]
+
+
+def clamp_point_to_frame(point, frame):
+    """
+    Clamp a point to be within the boundaries of an image.
+
+    Parameters:
+    x (int): The x-coordinate of the point.
+    y (int): The y-coordinate of the point.
+    image_width (int): The width of the image.
+    image_height (int): The height of the image.
+
+    Returns:
+    tuple: A tuple (x, y) where the point coordinates are clamped within the image dimensions.
+    """
+    x, y = point
+    x_min, y_min, x_max, y_max = frame
+
+    x_clamped = max(y_min, min(x, x_max - 1))
+    y_clamped = max(y_min, min(y, y_max - 1))
+    return (x_clamped, y_clamped)

@@ -4,46 +4,59 @@ import numpy as np
 import utils
 import line_time_averaging
 import line_finder
+from typing import List, Tuple, Optional
 
 
-def draw_lines(image, lines, width=2):
-    """draws lines onto an image/ mask
+def draw_lines(image: np.ndarray, lines: Optional[List[List[int]]], width: int = 2) -> np.ndarray:
+    """
+    Draws lines onto an image or mask.
 
     Args:
-        image (_type_): image to be drawn on
-        lines (_type_): array of arrays [[xstart, ystart, xend, yend], [xstart, ystart, xend, yend]]
+        image (np.ndarray): The image to be drawn on. It should be a NumPy array.
+        lines (List[List[int]]): An array of lines, where each line is represented as [xstart, ystart, xend, yend].
+        width (int, optional): The thickness of the lines to be drawn. Defaults to 2.
 
     Returns:
-        (numpy.ndarray, dtype, uint8): image with lines drawn on
+        np.ndarray: An image with lines drawn on it.
     """
 
+    # Create an image filled with zeros, having the same dimensions as the input image
     lines_image = np.zeros_like(image)
+
+    # Draw each line on the lines_image
     if lines is not None:
         for line in lines:
-            x1, y1, x2, y2 = line  # hvis input averaged lines
+            x1, y1, x2, y2 = line
+            # Draw the line on the image. Color is set to (1, 0, 0), which is blue for an RGB image.
+            # If the input image is grayscale or another format, this color needs to be adjusted.
             cv2.line(lines_image, (x1, y1), (x2, y2), (1, 0, 0), width)
+
     return lines_image
 
-def remove_da_outside_lines(da_seg_mask, approximate_lines, frame):
-    """removes the drivable area outside the improved road lines
+
+def remove_da_outside_lines(
+    da_seg_mask: np.ndarray, approximate_lines: np.ndarray, frame: Tuple[int, int, int, int]
+) -> np.ndarray:
+    """
+    Removes the drivable area outside the improved road lines by applying a flood fill operation from the bottom middle
+    of the image and then combining it with the original drivable area mask.
 
     Args:
-        da_seg_mask (numpy.ndarray, dtype, uint8): drivable area mask 0 means not drivable, 1 means drivable
-        approximate_lines (numpy.ndarray, dtype, uint8): lane lines mask 0 means no lane line, 1 means lane line
-        expected shape of both: (720, 1280)  "720p"
-        frame (tuple): shape of images
+        da_seg_mask (np.ndarray): Drivable area mask where 0 means not drivable and 1 means drivable.
+        approximate_lines (np.ndarray): Lane lines mask where 0 means no lane line and 1 means lane line.
+        frame (tuple): The shape of the images, given as (height, width).
 
     Returns:
-        (numpy.ndarray, dtype, uint8): corrected_da_mask
-
+        np.ndarray: The corrected drivable area mask.
     """
 
     # flood fill begins at the seed_point wich is in the bottom middle of Image
     seed_point = (frame[2] // 2, frame[3] - 10)
 
     # Flood fill
-    floodfill_color = 255  # white color for flood fill
-    cv2.floodFill(approximate_lines, None, seed_point, floodfill_color)
+    floodfill_color = (255, 255, 255)  # white color for flood fill
+    mask = np.zeros((frame[3] + 2, frame[2] + 2), np.uint8)
+    cv2.floodFill(approximate_lines, mask, seed_point, floodfill_color)
 
     # combine the original image and the new mask
     corrected_da_mask = cv2.bitwise_and(da_seg_mask, approximate_lines)
@@ -51,48 +64,51 @@ def remove_da_outside_lines(da_seg_mask, approximate_lines, frame):
     return corrected_da_mask
 
 
-def filter_da(da_seg_mask, ll_seg_mask):
-    """this is the main function filtering the drivable area (da)
-    yolopv2 somtimes gives incomplete multiple and discontinous lines, it also somtimes miscattecgorises the grass on the side of the road as part of the road.
-    This function tries to find a good straigth line aproximation for the track limits and then uses this to remove the da outside the lines somewhat like the fill tool in paint.
+def filter_da(da_seg_mask: np.ndarray, ll_seg_mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Refines the drivable area segmentation by using improved road line estimations to filter out non-road areas.
+    This function integrates various processing steps to create a more accurate drivable area mask based on the lane lines.
 
     Args:
-        da_seg_mask (numpy.ndarray, dtype, int32): drivable area mask 0 means not drivable, 1 means drivable
-        ll_seg_mask (numpy.ndarray, dtype, int32): lane lines mask 0 means no lane line, 1 means lane line
-        expected shape of both: (720, 1280)  "720p"
+        da_seg_mask (np.ndarray): A binary mask representing the drivable area, where 1 indicates drivable space and 0 indicates non-drivable space.
+        ll_seg_mask (np.ndarray): A binary mask representing detected lane lines, where 1 indicates a lane line and 0 indicates no lane line.
 
     Returns:
-        (numpy.ndarray, dtype, uint8): filtered drivable area mask
-        (numpy.ndarray, dtype, uint8): improved road line mask
+        todo update return type
+        Tuple[np.ndarray, np.ndarray, np.ndarray]: A tuple containing three np.ndarrays:
+            - The original lane line mask (ll_seg_mask)
+            - The filtered drivable area mask (filtered_da_seg_mask)
+            - The mask with improved road lines (road_lines)
     """
 
-    # Frame  (ymax, xmax)
-    # todo remove frame and use np.shape instead or use frame and change from (y,x) to (x,y) for more consistent and easier to understand code
+    # Determine the frame dimensions from the drivable area mask
     height, width = da_seg_mask.shape
-    frame = [0, 0, width - 1, height - 1]
+    frame = [0, 0, width, height]
 
-    # change dtype to uint8 expected by cv2
+    # Convert masks to uint8 as expected by OpenCV functions
     ll_seg_mask = ll_seg_mask.astype(np.uint8)
     da_seg_mask = da_seg_mask.astype(np.uint8)
 
-    # tries to improve lines and section of the image
-    left_line, right_line = line_finder.filter_lines(ll_seg_mask, frame)  # lines in (slope, y-intercept) format
+    # Improve lines and section of the image
+    left_line, right_line = line_finder.filter_lines(ll_seg_mask, frame)
 
+    # Add lines to buffer for time averaging
     line_time_averaging.add_line_to_buffer(left_line, right_line)
 
+    # Calculate Exponentially Moving Weighted Average (EMWA) lines
     left_line, right_line = line_time_averaging.calculate_EMWA_lines()
 
-    # connects the two lines at the intersection point to section of the image
+    # Connect the two lines at the intersection point
     left_line, right_line = line_finder.lines_to_intersection(left_line, right_line, frame)
 
-    # draws them onto the image
+    # Draw the improved road lines on a new mask
     road_lines = np.zeros_like(ll_seg_mask)
     road_lines = draw_lines(road_lines, [left_line, right_line])
 
-    # removes the da outside the lines
-    da_seg_mask = remove_da_outside_lines(da_seg_mask, road_lines, frame)
+    # Remove the drivable area outside the improved road lines
+    filtered_da_seg_mask = remove_da_outside_lines(da_seg_mask, road_lines, frame)
 
-    return ll_seg_mask, da_seg_mask, road_lines
+    return ll_seg_mask, filtered_da_seg_mask, road_lines
 
 
 # ------------------------ delet this (for debugging setup dont have gpu   :(      ) ------------------------

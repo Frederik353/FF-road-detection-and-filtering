@@ -11,7 +11,7 @@ from filter_da import filter_da
 
 
 class debug_filter_da:
-    image_range = (0, 25)
+    image_range = (1, 357)
     # image_range = (0, 357)
     wait_time = 1  # ms between showing images
     # 30 missing left
@@ -50,7 +50,6 @@ class debug_filter_da:
 
                 image = self.combine_masks(masks)
                 self.display_image(image, i)
-                print("image", image.dtype, image.shape)
 
                 if self.save_result:
                     self.save_image(image, i)
