@@ -56,13 +56,13 @@ The road detection system uses a combination of computer vision techniques:
 
 ### Tools and Libraries
 - OpenCV for image processing
-- TensorFlow/PyTorch for any machine learning models used for road segmentation (if applicable)
+- TensorFlow/PyTorch for any machine learning models used for road segmentation
 - NumPy for data handling
 
 
 ## Filtering Technique
 
-To enhance the accuracy of road detection, the system relies on AI-generated masks combined with filtering techniques. The core approach involves processing lane line estimates from YOLO PV2 (a real-time object detection algorithm) and refining them using several methods:
+To enhance the accuracy of road detection, the system relies on AI-generated masks combined with filtering techniques. The core approach involves processing lane line estimates from YOLO PV2 (a real-time road detection AI) and refining them using several methods:
 
 - **YOLO PV2 Mask**: The AI model provides an initial mask of the estimated lane lines, which serves as the starting point for further filtering.
 - **Hough Transform**: The Hough Line Transform is used to detect and emphasize straight lines in the masked image, particularly for identifying lane boundaries. This step is critical for refining the lane detection and removing irrelevant or noisy line segments.
